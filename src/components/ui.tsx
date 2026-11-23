@@ -185,3 +185,15 @@ export function Evidence({ text }: { text: string }) {
     </p>
   );
 }
+
+/** "model · 12.3s" shown in a section header: which model actually answered. */
+export function StageMeta({ ms, model }: { ms?: number; model?: string }) {
+  if (!ms && !model) return null;
+  return (
+    <span className="num max-w-[240px] truncate text-[12px] text-label-2" title={model ? `由 ${model} 生成` : undefined}>
+      {model}
+      {model && ms ? " · " : ""}
+      {ms ? `${(ms / 1000).toFixed(1)}s` : ""}
+    </span>
+  );
+}

@@ -2,7 +2,7 @@
 
 import { ArrowRight, Brain, Camera, Clapperboard, Clock, Crosshair, Minus, Plus, ShieldAlert } from "lucide-react";
 import type { InsightResponse, StageState } from "@/lib/api-types";
-import { Block, Chip, ErrorBox, Evidence, ICON_STROKE, Section, Waiting } from "./ui";
+import { Block, Chip, ErrorBox, Evidence, ICON_STROKE, Section, StageMeta, Waiting } from "./ui";
 
 export function AnalysisSection({ state, onRetry }: { state: StageState<InsightResponse>; onRetry: () => void }) {
   const a = state.data?.data;
@@ -21,7 +21,7 @@ export function AnalysisSection({ state, onRetry }: { state: StageState<InsightR
               结合 {state.data.imagesUsed} 张商品图
             </Chip>
           )}
-          {state.ms ? <span className="num text-[12px] text-label-2">{(state.ms / 1000).toFixed(1)}s</span> : null}
+          <StageMeta ms={state.ms} model={state.data?.meta.model} />
         </>
       }
     >

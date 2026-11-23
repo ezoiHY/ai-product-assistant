@@ -2,7 +2,7 @@
 
 import { FileText } from "lucide-react";
 import type { InfoResponse, StageState } from "@/lib/api-types";
-import { Block, ErrorBox, Section, Waiting } from "./ui";
+import { Block, ErrorBox, Section, Waiting, StageMeta } from "./ui";
 
 export function InfoSection({ state, onRetry }: { state: StageState<InfoResponse>; onRetry: () => void }) {
   const info = state.data?.data.productInfo;
@@ -23,7 +23,7 @@ export function InfoSection({ state, onRetry }: { state: StageState<InfoResponse
       color="blue"
       title="产品信息整理"
       subtitle="从商品页提取关键信息，翻译并提炼成中文"
-      right={state.ms ? <span className="num text-[12px] text-label-2">{(state.ms / 1000).toFixed(1)}s</span> : null}
+      right={<StageMeta ms={state.ms} model={state.data?.meta.model} />}
     >
       {state.status === "error" && <ErrorBox message={state.error ?? "失败"} code={state.errorCode} onRetry={onRetry} />}
       {state.status === "running" && <Waiting text="正在整理中文产品档案…" />}

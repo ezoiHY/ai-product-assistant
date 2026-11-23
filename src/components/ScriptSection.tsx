@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReviewResponse, ScriptResponse, StageState } from "@/lib/api-types";
 import { countChars, estimateSeconds, firstSentence, MAX_CHARS } from "@/lib/quality/rules";
 import { ChecksList } from "./Checks";
-import { Block, Chip, CopyButton, ErrorBox, ICON_STROKE, Section, Waiting, cx } from "./ui";
+import { Block, Chip, CopyButton, ErrorBox, ICON_STROKE, Section, StageMeta, Waiting, cx } from "./ui";
 
 function useSpeech() {
   const [playing, setPlaying] = useState(false);
@@ -81,11 +81,14 @@ export function ScriptSection({
       title="短视频口播文案"
       subtitle="150 字以内 · 开头 5 秒是钩子 · 已经过事实与合规质检"
       right={
-        s && !busy ? (
-          <button onClick={onRegenerate} className="btn btn-secondary">
-            <RefreshCw className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" /> 换一版
-          </button>
-        ) : null
+        <>
+          <StageMeta ms={state.ms} model={state.data?.meta.model} />
+          {s && !busy && (
+            <button onClick={onRegenerate} className="btn btn-secondary">
+              <RefreshCw className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" /> 换一版
+            </button>
+          )}
+        </>
       }
     >
       {state.status === "error" && <ErrorBox message={state.error ?? "失败"} code={state.errorCode} onRetry={onRetry} />}

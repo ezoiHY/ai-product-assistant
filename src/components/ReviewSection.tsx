@@ -3,7 +3,7 @@
 import { ShieldCheck } from "lucide-react";
 import type { ReviewResponse, ScriptResponse, StageState } from "@/lib/api-types";
 import { ChecksList, DiffView } from "./Checks";
-import { Block, Chip, ErrorBox, Section, Waiting, type Tone } from "./ui";
+import { Block, Chip, ErrorBox, Section, Waiting, type Tone, StageMeta } from "./ui";
 
 const STATUS_TONE: Record<string, Tone> = { 有依据: "green", 无依据: "amber", 夸大: "red", 与资料不符: "red" };
 
@@ -63,7 +63,7 @@ export function ReviewSection({
       color="green"
       title="质量检查"
       subtitle="规则引擎 + AI 逐条核查事实，降低错误信息和夸大描述"
-      right={state.ms ? <span className="num text-[12px] text-label-2">{(state.ms / 1000).toFixed(1)}s</span> : null}
+      right={<StageMeta ms={state.ms} model={state.data?.meta.model} />}
     >
       {state.status === "error" && <ErrorBox message={state.error ?? "失败"} code={state.errorCode} onRetry={onRetry} />}
       {state.status === "blocked" && <p className="text-[14px] text-label-2">文案写好后自动开始质检。</p>}

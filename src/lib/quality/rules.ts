@@ -11,8 +11,8 @@ export interface ScriptCheck {
 }
 
 export const MAX_CHARS = 150;
-/** Typical short-video voice-over speed (Chinese characters per second). */
-export const CHARS_PER_SECOND = 4.5;
+/** Typical short-video voice-over speed (Chinese characters per second, ~300/min). */
+export const CHARS_PER_SECOND = 5;
 /** Characters that fit in the first 5 seconds. */
 export const HOOK_MAX_CHARS = 25;
 
