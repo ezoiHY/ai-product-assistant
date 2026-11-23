@@ -10,12 +10,15 @@ import type { ProductData, ScrapeResult } from "./types";
 
 const cache = new TTLCache<ScrapeResult>(30 * 60_000);
 
+// What went wrong, then what to do. The fix for a block is 浏览器带回: Amazon
+// limits cloud-server IPs, not the visitor's own browser.
 const FAIL_MESSAGES: Record<string, { msg: string; status: number }> = {
   not_found: { msg: "Amazon 上找不到这个商品页面：可能已下架、链接有误，或该站点不售卖此商品。", status: 404 },
-  captcha: { msg: "Amazon 暂时用验证码拦截了服务器访问。可以稍后重试，或展开下方「手动粘贴商品信息」继续分析。", status: 502 },
-  blocked: { msg: "Amazon 暂时拒绝了服务器访问。可以稍后重试，或展开下方「手动粘贴商品信息」继续分析。", status: 502 },
-  network: { msg: "连接 Amazon 超时，请稍后重试。", status: 504 },
+  captcha: { msg: "Amazon 用验证码拦住了服务器", status: 502 },
+  blocked: { msg: "Amazon 拒绝了服务器访问", status: 502 },
+  network: { msg: "连接 Amazon 超时", status: 504 },
 };
+const BLOCKED_HINT = "这是 Amazon 对云服务器 IP 的限制，不是链接的问题。点下方「浏览器带回」，在你自己的浏览器里打开这个商品页就能继续分析；也可以稍后重试。";
 
 const VERDICT_ZH: Record<string, string> = { captcha: "验证码页", blocked: "拒绝访问", not_found: "页面不存在", network_error: "连接失败", ok: "正常" };
 
@@ -79,7 +82,13 @@ export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {
   }
   const f = FAIL_MESSAGES[reason] ?? FAIL_MESSAGES.blocked;
   const seen = summarizeAttempts(outcome.attempts);
-  throw new AppError(seen && reason !== "not_found" ? `${f.msg}（Amazon 返回：${seen}）` : f.msg, reason, f.status);
+  const message =
+    reason === "not_found"
+      ? f.msg
+      : reason === "network"
+        ? `${f.msg}，请稍后重试，或用下方「浏览器带回」继续分析。`
+        : `${f.msg}${seen ? `（Amazon 返回：${seen}）` : ""}。${BLOCKED_HINT}`;
+  throw new AppError(message, reason, f.status);
 }
 
 /** "浏览器带回": the visitor's own browser sent the product page it is showing.

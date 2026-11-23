@@ -585,7 +585,7 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
         {scraping && (
           <div className="card rise mx-auto mt-8 flex max-w-[760px] items-center gap-3 px-6 py-5 text-[14px] text-label-2" role="status">
             <Loader2 className="h-5 w-5 shrink-0 animate-spin text-info" strokeWidth={2} aria-hidden="true" />
-            正在获取并解析商品页，直连失败会自动改用 Claude 联网获取…
+            正在获取并解析商品页，通常需要 3–10 秒…
           </div>
         )}
 
