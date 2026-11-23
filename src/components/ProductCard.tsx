@@ -10,6 +10,7 @@ const SOURCE: Record<string, { text: string; tone: Tone }> = {
   direct: { text: "直连解析商品页", tone: "green" },
   claude_web: { text: "Claude 联网获取", tone: "blue" },
   manual: { text: "手动粘贴", tone: "violet" },
+  browser: { text: "浏览器带回", tone: "green" },
 };
 
 function Stars({ value }: { value: number }) {

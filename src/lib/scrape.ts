@@ -2,7 +2,7 @@
 import { aiConfigured } from "./ai/client";
 import { llmConfig } from "./ai/config";
 import { extractFromText, extractWithWeb } from "./ai/extract";
-import { fetchProductPage, type AttemptLog } from "./amazon/fetch";
+import { classifyPage, fetchProductPage, type AttemptLog } from "./amazon/fetch";
 import { buildPageDigest, completenessOf, parseProductHtml } from "./amazon/parse";
 import { extractAsinFromPath, parseAmazonInput } from "./amazon/url";
 import { AppError, TTLCache } from "./server-utils";
@@ -80,6 +80,35 @@ export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {
   const f = FAIL_MESSAGES[reason] ?? FAIL_MESSAGES.blocked;
   const seen = summarizeAttempts(outcome.attempts);
   throw new AppError(seen && reason !== "not_found" ? `${f.msg}（Amazon 返回：${seen}）` : f.msg, reason, f.status);
+}
+
+/** "浏览器带回": the visitor's own browser sent the product page it is showing.
+ *  Same parser as the direct fetch, but the server never contacts Amazon. */
+export async function productFromHtml(url: string, html: string): Promise<ScrapeResult> {
+  const t0 = Date.now();
+  const { asin, domain, canonicalUrl } = await parseAmazonInput(url);
+  const verdict = classifyPage(html, 200);
+  if (verdict !== "ok") {
+    throw new AppError(
+      verdict === "captcha" ? "带回的是 Amazon 的验证页，请在浏览器里先完成验证，再在商品页点书签" : "带回的不是商品详情页，请打开具体商品的页面再点书签",
+      "not_product_page",
+      422,
+    );
+  }
+  const { product, warnings } = parseProductHtml(html, { asin, domain, url: canonicalUrl });
+  if (!product.title) throw new AppError("没能从这个页面里识别出商品信息", "not_product_page", 422);
+  console.info(`[scrape] ${domain}/${asin} browser-capture ${html.length} chars`);
+  const result: ScrapeResult = {
+    product,
+    source: "browser",
+    sourceDetail: "由你的浏览器带回商品页并解析（服务器没有请求 Amazon）",
+    pageDigest: buildPageDigest(html),
+    completeness: completenessOf(product),
+    warnings,
+    elapsedMs: Date.now() - t0,
+  };
+  cache.set(`${domain}:${asin}`, result);
+  return result;
 }
 
 export async function productFromPaste(text: string, url?: string): Promise<ScrapeResult> {

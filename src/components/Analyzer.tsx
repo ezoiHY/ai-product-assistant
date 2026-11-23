@@ -33,11 +33,13 @@ import {
   type StageKey,
   type StageState,
 } from "@/lib/api-types";
+import { AMAZON_ORIGIN_RE, slimAmazonHtml } from "@/lib/capture";
 import { loadLLMConfig, useLLMConfig } from "@/lib/llm-config";
 import { DEFAULT_MODEL } from "@/lib/llm-shared";
 import { buildMarkdown } from "@/lib/report";
 import { AnalysisSection } from "./AnalysisSection";
 import { ApiSettingsSheet } from "./ApiSettings";
+import { CaptureBookmarklet } from "./CaptureBookmarklet";
 import { InfoSection } from "./InfoSection";
 import { ProductCard } from "./ProductCard";
 import { ReviewSection } from "./ReviewSection";
@@ -71,6 +73,14 @@ interface HistoryItem {
   run: AnalysisRun;
 }
 const HISTORY_KEY = "apa-history-v1";
+
+// Read ?capture=1 once per page load: the effect below cleans the URL, and React
+// may run effects twice (dev Strict Mode), so the second run must still know.
+let captureRequested: boolean | null = null;
+function isCaptureRequest(): boolean {
+  captureRequested ??= new URLSearchParams(window.location.search).get("capture") === "1";
+  return captureRequested;
+}
 
 function loadHistory(): HistoryItem[] {
   try {
@@ -174,6 +184,7 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
   const [manualText, setManualText] = useState("");
   const [health, setHealth] = useState<{ ai: boolean; model: string; modelFixed?: boolean } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [captureWaiting, setCaptureWaiting] = useState(false);
   const userCfg = useLLMConfig();
   // AI works with either a visitor key (saved in this browser) or the server's key
   const aiReady = Boolean(userCfg.apiKey) || Boolean(health?.ai);
@@ -341,6 +352,39 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
     void start((signal) => postJSON<ScrapeResponse>("/api/extract", { text: manualText, url: input }, signal), input || "手动粘贴");
   };
 
+  // "浏览器带回": a page the bookmarklet sent from the visitor's Amazon tab
+  const analyzeCaptured = (url: string, html: string) => {
+    setCaptureWaiting(false);
+    setInput(url);
+    const slim = slimAmazonHtml(html);
+    void start((signal) => postJSON<ScrapeResponse>("/api/parse-html", { url, html: slim }, signal), url);
+  };
+  const captureRef = useRef(analyzeCaptured);
+  useEffect(() => {
+    captureRef.current = analyzeCaptured;
+  });
+
+  useEffect(() => {
+    if (!isCaptureRequest()) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    const opener = window.opener as Window | null;
+    if (!opener) return;
+    const onMessage = (e: MessageEvent) => {
+      if (!AMAZON_ORIGIN_RE.test(e.origin)) return; // only accept pages from Amazon itself
+      const d = e.data as { type?: string; url?: string; html?: string } | null;
+      if (!d || d.type !== "apa-capture" || typeof d.url !== "string" || typeof d.html !== "string") return;
+      window.removeEventListener("message", onMessage);
+      captureRef.current(d.url, d.html);
+    };
+    window.addEventListener("message", onMessage);
+    const show = setTimeout(() => setCaptureWaiting(true), 0);
+    opener.postMessage("apa-ready", "*"); // carries no data; the reply is origin-checked above
+    return () => {
+      clearTimeout(show);
+      window.removeEventListener("message", onMessage);
+    };
+  }, []);
+
   const retry = (key: StageKey) => {
     const signal = abortRef.current?.signal && !abortRef.current.signal.aborted ? abortRef.current.signal : newSignal();
     if (key === "info") void chainFromInfo(signal);
@@ -504,11 +548,14 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
                   <ErrorBox message={run.scrape.error ?? "抓取失败"} code={run.scrape.errorCode} onRetry={() => analyzeUrl(input)} />
                 </div>
               )}
+              <div className="mb-5">
+                <CaptureBookmarklet />
+              </div>
               <label htmlFor="manual-text" className="text-[15px] font-semibold text-label">
-                手动粘贴商品信息
+                或者手动粘贴商品信息
               </label>
               <p className="mt-1 text-[13px] leading-6 text-label-2">
-                抓取被拦截时的兜底方案：在浏览器打开商品页，全选（⌘/Ctrl + A）复制整页文字粘贴到这里，AI 会抽取商品信息并完成全部分析。
+                在浏览器打开商品页，全选（⌘/Ctrl + A）复制整页文字粘贴到这里，AI 会抽取商品信息并完成全部分析。
               </p>
               <textarea
                 id="manual-text"
@@ -527,6 +574,13 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
             </div>
           )}
         </section>
+
+        {captureWaiting && run.scrape.status === "idle" && (
+          <div className="card rise mx-auto mt-8 flex max-w-[760px] items-center gap-3 px-6 py-5 text-[14px] text-label-2" role="status">
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-info" strokeWidth={2} aria-hidden="true" />
+            正在等待 Amazon 页面发来商品信息……没有反应的话，回到商品页再点一次书签。
+          </div>
+        )}
 
         {scraping && (
           <div className="card rise mx-auto mt-8 flex max-w-[760px] items-center gap-3 px-6 py-5 text-[14px] text-label-2" role="status">

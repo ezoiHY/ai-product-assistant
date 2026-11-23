@@ -67,7 +67,7 @@ export interface ProductData {
   reviewInsights?: ReviewInsights;
 }
 
-export type ScrapeSource = "direct" | "claude_web" | "manual";
+export type ScrapeSource = "direct" | "claude_web" | "manual" | "browser";
 
 export interface ScrapeResult {
   product: ProductData;
