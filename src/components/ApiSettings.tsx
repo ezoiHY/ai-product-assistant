@@ -11,6 +11,8 @@ import { ICON_STROKE, IconTile, cx } from "./ui";
 export interface ServerStatus {
   ai: boolean;
   model: string;
+  /** server key goes through a gateway: its model can't be switched by visitors */
+  modelFixed?: boolean;
 }
 
 // ---------- small iOS-style primitives ----------
@@ -214,7 +216,7 @@ function SettingsForm({ server, onDone }: { server: ServerStatus | null; onDone:
   const status = saved.apiKey
     ? { ok: true, text: `正在使用你的 API Key（${maskKey(saved.apiKey)}）`, model: saved.model || DEFAULT_MODEL }
     : server?.ai
-      ? { ok: true, text: "正在使用服务器配置的 API Key", model: saved.model || server.model }
+      ? { ok: true, text: "正在使用服务器配置的 API Key", model: server.modelFixed ? server.model : saved.model || server.model }
       : { ok: false, text: "还没有可用的 API Key，AI 分析暂不可用", model: "" };
 
   return (
@@ -303,7 +305,14 @@ function SettingsForm({ server, onDone }: { server: ServerStatus | null; onDone:
           </div>
         </Group>
 
-        <Group title="模型" footer="价格为每百万 token 的输入 / 输出费用（Anthropic 官方价）。">
+        <Group
+          title="模型"
+          footer={
+            !usingOwnKey && server?.ai && server.modelFixed
+              ? `现在使用服务器的 Key，固定使用服务器配置的模型（${server.model}）；填写你自己的 Key 后才能换模型。`
+              : "价格为每百万 token 的输入 / 输出费用（Anthropic 官方价）。"
+          }
+        >
           <div role="radiogroup" aria-label="模型">
             {KNOWN_MODELS.map((m) => {
               const on = form.modelChoice === m.id;

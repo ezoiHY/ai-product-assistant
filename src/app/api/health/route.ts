@@ -5,5 +5,6 @@ import { envConfig } from "@/lib/ai/config";
 export async function GET() {
   await connection(); // evaluate env at request time, not at build time
   const env = envConfig();
-  return Response.json({ ai: env.keySource !== "none", model: env.model });
+  // modelFixed: the server key goes through a gateway, so visitors can't switch its model
+  return Response.json({ ai: env.keySource !== "none", model: env.model, modelFixed: Boolean(env.baseURL) });
 }

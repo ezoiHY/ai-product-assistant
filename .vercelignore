@@ -1,0 +1,7 @@
+# keep local-only files out of CLI uploads (Git deployments only see committed files anyway)
+.env*
+!.env.example
+/src/dev/
+/src/app/dev-preview/
+/pipeline-out/
+/.next/

@@ -172,12 +172,14 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
   const [run, setRun] = useState<AnalysisRun>(initialRun ?? emptyRun());
   const [manualOpen, setManualOpen] = useState(false);
   const [manualText, setManualText] = useState("");
-  const [health, setHealth] = useState<{ ai: boolean; model: string } | null>(null);
+  const [health, setHealth] = useState<{ ai: boolean; model: string; modelFixed?: boolean } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const userCfg = useLLMConfig();
   // AI works with either a visitor key (saved in this browser) or the server's key
   const aiReady = Boolean(userCfg.apiKey) || Boolean(health?.ai);
-  const activeModel = userCfg.model || (userCfg.apiKey ? DEFAULT_MODEL : health?.model) || DEFAULT_MODEL;
+  const activeModel = userCfg.apiKey
+    ? userCfg.model || DEFAULT_MODEL
+    : (health?.modelFixed ? health.model : userCfg.model || health?.model) || DEFAULT_MODEL;
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [now, setNow] = useState(0);

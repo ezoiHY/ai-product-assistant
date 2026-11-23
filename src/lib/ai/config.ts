@@ -8,7 +8,7 @@
 // AsyncLocalStorage carries the config through one request, so the pipeline code
 // (stages, extract, client) doesn't need an extra parameter everywhere.
 import { AsyncLocalStorage } from "node:async_hooks";
-import { DEFAULT_MODEL, KNOWN_MODELS, LLM_HEADERS, validateApiKey, validateBaseURL, validateModel } from "../llm-shared";
+import { DEFAULT_MODEL, KNOWN_MODELS, LLM_HEADERS, OFFICIAL_BASE_URL, validateApiKey, validateBaseURL, validateModel } from "../llm-shared";
 import { AIError } from "./errors";
 
 export interface LLMConfig {
@@ -24,7 +24,11 @@ const store = new AsyncLocalStorage<LLMConfig>();
 
 export function envConfig(): LLMConfig {
   const hasKey = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+  // An operator-set gateway (the SDK reads ANTHROPIC_BASE_URL itself); recorded here
+  // so the pipeline knows it's a custom endpoint and uses prompted JSON directly.
+  const envBase = process.env.ANTHROPIC_BASE_URL?.trim().replace(/\/+$/, "");
   return {
+    baseURL: envBase && envBase !== OFFICIAL_BASE_URL ? envBase : undefined,
     model: process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL,
     fallbacks: process.env.ANTHROPIC_FALLBACKS !== "off",
     keySource: hasKey ? "server" : "none",
@@ -46,8 +50,9 @@ export function configFromRequest(req: Request): LLMConfig {
   }
 
   // Using the server's key: never send it to a visitor-supplied base URL, and
-  // only allow switching between the known Claude models.
-  const knownModel = KNOWN_MODELS.some((m) => m.id === model) ? model : env.model;
+  // only allow switching between the known Claude models — unless the operator
+  // runs a gateway, where those preset names may not exist: then the model is fixed.
+  const knownModel = !env.baseURL && KNOWN_MODELS.some((m) => m.id === model) ? model : env.model;
   return { ...env, model: knownModel, fallbacks: env.fallbacks && !fallbacksOff };
 }
 
