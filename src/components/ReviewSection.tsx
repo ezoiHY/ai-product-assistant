@@ -65,7 +65,7 @@ export function ReviewSection({
       subtitle="规则引擎 + AI 逐条核查事实，降低错误信息和夸大描述"
       right={state.ms ? <span className="num text-[12px] text-label-2">{(state.ms / 1000).toFixed(1)}s</span> : null}
     >
-      {state.status === "error" && <ErrorBox message={state.error ?? "失败"} onRetry={onRetry} />}
+      {state.status === "error" && <ErrorBox message={state.error ?? "失败"} code={state.errorCode} onRetry={onRetry} />}
       {state.status === "blocked" && <p className="text-[14px] text-label-2">文案写好后自动开始质检。</p>}
       {state.status === "running" && <Waiting text="正在把文案拆成一条条事实，逐条对照商品资料核查，并扫描广告法用语…" />}
       {r && state.data && (

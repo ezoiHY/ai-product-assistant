@@ -3,6 +3,7 @@ import type { CallMeta } from "./ai/client";
 import type { InfoStage, ProductAnalysis, ReviewReport, VideoScript } from "./ai/schemas";
 import type { ScriptCheck } from "./quality/rules";
 import type { ScrapeResult } from "./types";
+import { llmHeaders } from "./llm-config";
 
 export type ScrapeResponse = ScrapeResult & { cached?: boolean };
 export type InfoResponse = { data: InfoStage; meta: CallMeta; cached?: boolean };
@@ -22,6 +23,8 @@ export interface StageState<T> {
   status: "idle" | "running" | "done" | "error" | "blocked";
   data?: T;
   error?: string;
+  /** server error code, e.g. "not_configured" / "auth" → the UI offers "API 设置" */
+  errorCode?: string;
   startedAt?: number;
   ms?: number;
 }
@@ -42,10 +45,12 @@ export const emptyRun = (): AnalysisRun => ({
   review: { status: "idle" },
 });
 
-export async function postJSON<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
+/** POST JSON. The saved API settings travel as headers (`headers` overrides them,
+ *  e.g. to test unsaved form values). */
+export async function postJSON<T>(url: string, body: unknown, signal?: AbortSignal, headers?: Record<string, string>): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(headers ?? llmHeaders()) },
     body: JSON.stringify(body),
     signal,
   });

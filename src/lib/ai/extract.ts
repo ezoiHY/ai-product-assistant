@@ -4,7 +4,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ProductData } from "../types";
 import { parseMoney } from "../amazon/parse";
-import { AIError, MODEL, getClient, requestExtras, structuredCall, toAIError } from "./client";
+import { AIError, currentModel, getClient, requestExtras, structuredCall, toAIError } from "./client";
 import { EXTRACT_SYSTEM } from "./prompts";
 import { ExtractedProductSchema, type ExtractedProduct } from "./schemas";
 
@@ -83,7 +83,7 @@ export async function extractWithWeb(ctx: Ctx): Promise<{ product: ProductData; 
     let res: Anthropic.Beta.BetaMessage | null = null;
     for (let turn = 0; turn < 4; turn++) {
       res = await client.beta.messages.create({
-        model: MODEL,
+        model: currentModel(),
         max_tokens: 16000,
         system: EXTRACT_SYSTEM,
         messages,

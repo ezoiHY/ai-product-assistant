@@ -33,7 +33,7 @@ cp .env.example .env.local
 ANTHROPIC_API_KEY=sk-ant-你的key
 ```
 
-保存后启动：
+保存后启动（也可以跳过 `.env.local`，启动后在网页右上角「API 设置」里填 Key）：
 
 ```bash
 npm run dev
@@ -75,6 +75,8 @@ gh repo create ai-product-assistant --public --source=. --push
 3. Framework 会自动识别为 Next.js，其他保持默认。展开 **Environment Variables**，添加：
    - Name：`ANTHROPIC_API_KEY`
    - Value：你的 `sk-ant-...`
+
+   这一步可选：不设置也能部署，打开网页的人在「API 设置」里填自己的 Key 就能用。设置了的话，面试官打开网址就能直接测试，费用记在你的账户上。
 4. 点 **Deploy**，等 1-2 分钟，出现 Congratulations 页面。
 5. 点 **Continue to Dashboard**，上方的 `https://ai-product-assistant-xxx.vercel.app` 就是要提交的部署地址。
 

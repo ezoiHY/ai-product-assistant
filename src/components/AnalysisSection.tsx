@@ -25,7 +25,7 @@ export function AnalysisSection({ state, onRetry }: { state: StageState<InsightR
         </>
       }
     >
-      {state.status === "error" && <ErrorBox message={state.error ?? "失败"} onRetry={onRetry} />}
+      {state.status === "error" && <ErrorBox message={state.error ?? "失败"} code={state.errorCode} onRetry={onRetry} />}
       {state.status === "running" && <Waiting text="正在结合页面信息、买家评价和商品图片做深度分析，通常需要 30-60 秒…" />}
       {a && (
         <>

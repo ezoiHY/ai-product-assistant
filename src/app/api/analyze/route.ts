@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { currentModel } from "@/lib/ai/client";
+import { withLLM } from "@/lib/ai/config";
 import { runAnalysisStage, runInfoStage } from "@/lib/ai/stages";
 import { completenessOf } from "@/lib/amazon/parse";
 import { sanitizeProduct } from "@/lib/scrape";
@@ -20,16 +22,21 @@ export async function POST(req: Request) {
     // tokens) when the structured parse already captured the page well.
     const rawDigest = typeof body.pageDigest === "string" ? body.pageDigest.slice(0, 12_000) : "";
     const digest = rawDigest && completenessOf(product).score < 75 ? rawDigest : undefined;
-    if (body.part !== "info" && body.part !== "insight") throw new AppError("unknown part", "bad_input", 400);
+    const part = body.part;
+    if (part !== "info" && part !== "insight") throw new AppError("unknown part", "bad_input", 400);
 
-    const key = createHash("sha1").update(body.part + JSON.stringify(product) + (digest ?? "")).digest("hex");
-    if (!body.fresh) {
-      const hit = cache.get(key);
-      if (hit) return Response.json({ ...(hit as object), cached: true });
-    }
-    const result = body.part === "info" ? await runInfoStage(product, digest) : await runAnalysisStage(product, digest);
-    cache.set(key, result);
-    return Response.json(result);
+    return await withLLM(req, async () => {
+      const key = createHash("sha1")
+        .update(part + currentModel() + JSON.stringify(product) + (digest ?? ""))
+        .digest("hex");
+      if (!body.fresh) {
+        const hit = cache.get(key);
+        if (hit) return Response.json({ ...(hit as object), cached: true });
+      }
+      const result = part === "info" ? await runInfoStage(product, digest) : await runAnalysisStage(product, digest);
+      cache.set(key, result);
+      return Response.json(result);
+    });
   } catch (e) {
     return errorResponse(e);
   }

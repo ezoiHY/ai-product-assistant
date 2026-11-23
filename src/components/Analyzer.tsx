@@ -10,6 +10,7 @@ import {
   Clock,
   Download,
   FileText,
+  KeyRound,
   Link2,
   Loader2,
   Mic,
@@ -32,12 +33,16 @@ import {
   type StageKey,
   type StageState,
 } from "@/lib/api-types";
+import { loadLLMConfig, useLLMConfig } from "@/lib/llm-config";
+import { DEFAULT_MODEL } from "@/lib/llm-shared";
 import { buildMarkdown } from "@/lib/report";
 import { AnalysisSection } from "./AnalysisSection";
+import { ApiSettingsSheet } from "./ApiSettings";
 import { InfoSection } from "./InfoSection";
 import { ProductCard } from "./ProductCard";
 import { ReviewSection } from "./ReviewSection";
 import { ScriptSection } from "./ScriptSection";
+import { SettingsContext } from "./settings-context";
 import { CopyButton, ErrorBox, ICON_STROKE, IconTile, cx, type TileColor } from "./ui";
 
 const EXAMPLES = [
@@ -168,6 +173,12 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
   const [manualOpen, setManualOpen] = useState(false);
   const [manualText, setManualText] = useState("");
   const [health, setHealth] = useState<{ ai: boolean; model: string } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const userCfg = useLLMConfig();
+  // AI works with either a visitor key (saved in this browser) or the server's key
+  const aiReady = Boolean(userCfg.apiKey) || Boolean(health?.ai);
+  const activeModel = userCfg.model || (userCfg.apiKey ? DEFAULT_MODEL : health?.model) || DEFAULT_MODEL;
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [now, setNow] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -214,7 +225,8 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
         return data;
       } catch (e) {
         if (signal.aborted || (e instanceof DOMException && e.name === "AbortError")) return undefined;
-        patch(key, { status: "error", error: e instanceof Error ? e.message : String(e), ms: Date.now() - t0 });
+        const code = (e as { code?: string } | null)?.code;
+        patch(key, { status: "error", error: e instanceof Error ? e.message : String(e), errorCode: code, ms: Date.now() - t0 });
         return undefined;
       }
     },
@@ -304,9 +316,10 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
       }
       dataRef.current.scrape = scrape;
       setManualOpen(false);
-      if (health && !health.ai) {
-        const msg = "服务器未配置 ANTHROPIC_API_KEY，AI 分析不可用（左侧是商品抓取结果）";
-        setRun((r) => ({ ...r, info: { status: "error", error: msg }, insight: { status: "error", error: msg }, script: { status: "blocked" }, review: { status: "blocked" } }));
+      if (health && !health.ai && !loadLLMConfig().apiKey) {
+        const msg = "还没有配置 API Key：在「API 设置」填写你的 Anthropic Key 后点重试（左侧是已抓取的商品信息）";
+        const err = { status: "error" as const, error: msg, errorCode: "not_configured" };
+        setRun((r) => ({ ...r, info: err, insight: err, script: { status: "blocked" }, review: { status: "blocked" } }));
         return;
       }
       await Promise.all([chainFromInfo(signal), runInsight(signal)]);
@@ -352,7 +365,7 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
   const md = hasAI ? buildMarkdown(run) : "";
 
   return (
-    <>
+    <SettingsContext value={openSettings}>
       {/* Global nav + local step bar, frosted glass */}
       <header className="glass sticky top-0 z-40 shadow-[0_1px_0_var(--separator)]">
         <div className="mx-auto flex h-[52px] max-w-[1180px] items-center justify-between px-5">
@@ -368,12 +381,16 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
             <AppIcon />
             <span className="text-[15px] font-semibold tracking-[-0.01em] text-label">产品分析助手</span>
           </button>
-          {health && (
-            <span className={cx("chip", health.ai ? "bg-fill text-label-2" : "bg-warning-tint text-warning")}>
-              <span aria-hidden="true" className={cx("h-1.5 w-1.5 rounded-full", health.ai ? "bg-tile-green" : "bg-tile-orange")} />
-              {health.ai ? health.model : "未配置 API Key · 仅抓取模式"}
-            </span>
-          )}
+          <button
+            onClick={openSettings}
+            aria-haspopup="dialog"
+            className={cx("chip min-h-8 cursor-pointer gap-1.5 px-3 transition-colors", aiReady || !health ? "bg-fill text-label hover:bg-fill-2" : "bg-warning-tint text-warning hover:opacity-80")}
+          >
+            <span aria-hidden="true" className={cx("h-1.5 w-1.5 rounded-full", !health ? "bg-tile-gray" : aiReady ? "bg-tile-green" : "bg-tile-orange")} />
+            <span className="max-w-[46vw] truncate">{!health ? "API 设置" : aiReady ? activeModel : "配置 API Key"}</span>
+            <KeyRound className="h-3.5 w-3.5 shrink-0" strokeWidth={ICON_STROKE} aria-hidden="true" />
+            <span className="sr-only">，打开 API 设置</span>
+          </button>
         </div>
         {!idle && (
           <div className="border-t border-separator">
@@ -466,11 +483,23 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
             </button>
           </div>
 
+          {health && !aiReady && (
+            <div className="rise mx-auto mt-6 flex max-w-[600px] items-center gap-3 rounded-[18px] bg-surface px-4 py-3 text-left shadow-[var(--shadow-card)]">
+              <IconTile icon={KeyRound} color="orange" size="sm" />
+              <p className="flex-1 text-[13px] leading-5 text-label-2">
+                还没有配置 API Key，现在只能抓取商品信息。填写你的 Anthropic Key 后即可生成分析、口播文案和质检报告。
+              </p>
+              <button onClick={openSettings} className="btn btn-primary shrink-0">
+                配置
+              </button>
+            </div>
+          )}
+
           {(manualOpen || scrapeFailed) && !scraping && (
             <div className="card rise mx-auto mt-6 p-5 text-left sm:p-6">
               {scrapeFailed && (
                 <div className="mb-4">
-                  <ErrorBox message={run.scrape.error ?? "抓取失败"} onRetry={() => analyzeUrl(input)} />
+                  <ErrorBox message={run.scrape.error ?? "抓取失败"} code={run.scrape.errorCode} onRetry={() => analyzeUrl(input)} />
                 </div>
               )}
               <label htmlFor="manual-text" className="text-[15px] font-semibold text-label">
@@ -594,6 +623,8 @@ export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: Analy
           商品信息来自公开的 Amazon 商品页。AI 生成的内容已做事实核查，发布前仍建议人工确认价格等关键信息。
         </footer>
       </main>
-    </>
+
+      <ApiSettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} server={health} />
+    </SettingsContext>
   );
 }

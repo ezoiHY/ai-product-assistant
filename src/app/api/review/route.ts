@@ -1,3 +1,4 @@
+import { withLLM } from "@/lib/ai/config";
 import { formatProduct } from "@/lib/ai/format";
 import { VideoScriptSchema } from "@/lib/ai/schemas";
 import { runReviewStage } from "@/lib/ai/stages";
@@ -15,8 +16,7 @@ export async function POST(req: Request) {
     const product = sanitizeProduct(body.product);
     const script = VideoScriptSchema.safeParse(body.script);
     if (!script.success) throw new AppError("缺少待审核的文案", "bad_input", 400);
-    const result = await runReviewStage(product, script.data, formatProduct(product));
-    return Response.json(result);
+    return await withLLM(req, async () => Response.json(await runReviewStage(product, script.data, formatProduct(product))));
   } catch (e) {
     return errorResponse(e);
   }

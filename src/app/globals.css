@@ -226,9 +226,78 @@ body {
   border-radius: 10px;
 }
 
+/* ---------- iOS-style sheet on a native <dialog> ---------- */
+dialog.sheet {
+  margin: auto;
+  padding: 0;
+  border: 0;
+  width: min(560px, calc(100% - 32px));
+  max-height: min(88dvh, 860px);
+  overflow: hidden;
+  border-radius: 28px;
+  background: var(--canvas);
+  color: var(--label);
+  box-shadow: var(--shadow-float);
+}
+dialog.sheet::backdrop {
+  background: rgba(0, 0, 0, 0.32);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+dialog.sheet[open] {
+  animation: sheet-in 0.36s var(--ease-apple);
+}
+dialog.sheet[open]::backdrop {
+  animation: fade-in 0.25s ease-out;
+}
+html:has(dialog.sheet[open]) {
+  overflow: hidden;
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* phones: bottom sheet */
+@media (max-width: 639px) {
+  dialog.sheet {
+    margin: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: 28px 28px 0 0;
+  }
+  dialog.sheet[open] {
+    animation-name: sheet-up;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rise,
-  .skeleton {
+  .skeleton,
+  dialog.sheet[open],
+  dialog.sheet[open]::backdrop {
     animation: none;
   }
   .btn:active:not(:disabled) {

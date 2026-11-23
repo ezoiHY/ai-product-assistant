@@ -25,7 +25,7 @@ export function InfoSection({ state, onRetry }: { state: StageState<InfoResponse
       subtitle="从商品页提取关键信息，翻译并提炼成中文"
       right={state.ms ? <span className="num text-[12px] text-label-2">{(state.ms / 1000).toFixed(1)}s</span> : null}
     >
-      {state.status === "error" && <ErrorBox message={state.error ?? "失败"} onRetry={onRetry} />}
+      {state.status === "error" && <ErrorBox message={state.error ?? "失败"} code={state.errorCode} onRetry={onRetry} />}
       {state.status === "running" && <Waiting text="正在整理中文产品档案…" />}
       {info && (
         <>

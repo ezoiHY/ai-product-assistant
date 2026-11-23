@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, Copy, RotateCcw, TriangleAlert, type LucideIcon } from "lucide-react";
+import { Check, Copy, KeyRound, RotateCcw, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { CONFIG_ERROR_CODES, useOpenSettings } from "./settings-context";
 
 export function cx(...c: Array<string | false | null | undefined>) {
   return c.filter(Boolean).join(" ");
@@ -101,18 +102,27 @@ export function Waiting({ text }: { text: string }) {
   );
 }
 
-export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function ErrorBox({ message, code, onRetry }: { message: string; code?: string; onRetry?: () => void }) {
+  const openSettings = useOpenSettings();
+  const configIssue = code ? CONFIG_ERROR_CODES.has(code) : false;
   return (
     <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-danger-tint px-4 py-3.5 text-[14px] text-danger">
       <div className="flex items-start gap-2.5">
         <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={ICON_STROKE} aria-hidden="true" />
         <span className="leading-6">{message}</span>
       </div>
-      {onRetry && (
-        <button onClick={onRetry} className="btn bg-surface text-danger hover:opacity-80">
-          <RotateCcw className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" /> 重试
-        </button>
-      )}
+      <div className="flex gap-2">
+        {configIssue && (
+          <button onClick={openSettings} className="btn btn-primary">
+            <KeyRound className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" /> API 设置
+          </button>
+        )}
+        {onRetry && (
+          <button onClick={onRetry} className="btn bg-surface text-danger hover:opacity-80">
+            <RotateCcw className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" /> 重试
+          </button>
+        )}
+      </div>
     </div>
   );
 }

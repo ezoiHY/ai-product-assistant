@@ -88,7 +88,7 @@ export function ScriptSection({
         ) : null
       }
     >
-      {state.status === "error" && <ErrorBox message={state.error ?? "失败"} onRetry={onRetry} />}
+      {state.status === "error" && <ErrorBox message={state.error ?? "失败"} code={state.errorCode} onRetry={onRetry} />}
       {state.status === "blocked" && <p className="text-[14px] text-label-2">等“产品信息整理”完成后开始写。</p>}
       {state.status === "running" && <Waiting text="正在按“钩子 → 痛点 → 卖点 → 背书 → 行动”的结构写口播…" />}
       {s && (

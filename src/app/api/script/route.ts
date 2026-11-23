@@ -1,3 +1,4 @@
+import { withLLM } from "@/lib/ai/config";
 import { formatProduct } from "@/lib/ai/format";
 import { InfoStageSchema } from "@/lib/ai/schemas";
 import { runScriptStage } from "@/lib/ai/stages";
@@ -14,8 +15,7 @@ export async function POST(req: Request) {
     const product = sanitizeProduct(body.product);
     const info = InfoStageSchema.safeParse(body.info);
     if (!info.success) throw new AppError("缺少产品档案，请先完成信息整理", "bad_input", 400);
-    const result = await runScriptStage(product, info.data, formatProduct(product));
-    return Response.json(result);
+    return await withLLM(req, async () => Response.json(await runScriptStage(product, info.data, formatProduct(product))));
   } catch (e) {
     return errorResponse(e);
   }
