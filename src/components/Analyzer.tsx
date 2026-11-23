@@ -1,17 +1,23 @@
 "use client";
 
 import {
-  ArrowRight,
+  ArrowUp,
+  Brain,
+  ChevronRight,
   CircleCheck,
-  CircleDashed,
   CircleX,
   ClipboardPaste,
+  Clock,
   Download,
-  History,
+  FileText,
   Link2,
   Loader2,
+  Mic,
+  ScanSearch,
+  ShieldCheck,
   Sparkles,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -32,7 +38,7 @@ import { InfoSection } from "./InfoSection";
 import { ProductCard } from "./ProductCard";
 import { ReviewSection } from "./ReviewSection";
 import { ScriptSection } from "./ScriptSection";
-import { CopyButton, ErrorBox, cx } from "./ui";
+import { CopyButton, ErrorBox, ICON_STROKE, IconTile, cx, type TileColor } from "./ui";
 
 const EXAMPLES = [
   { label: "露营遮阳椅", url: "https://www.amazon.com/VTOY-Chairs%EF%BC%8CCamping-Foldable-ShadeforCamping/dp/B0CXT9RSGQ" },
@@ -43,12 +49,12 @@ const EXAMPLES = [
   { label: "降噪耳机", url: "https://www.amazon.com/dp/B0D1XD1ZV3" },
 ];
 
-const STEPS: Array<{ key: StageKey; label: string }> = [
-  { key: "scrape", label: "获取商品页" },
-  { key: "info", label: "信息整理" },
-  { key: "insight", label: "深度分析" },
-  { key: "script", label: "口播文案" },
-  { key: "review", label: "质量检查" },
+const STEPS: Array<{ key: StageKey; label: string; icon: LucideIcon; anchor?: string }> = [
+  { key: "scrape", label: "商品页", icon: ScanSearch },
+  { key: "info", label: "信息整理", icon: FileText, anchor: "info" },
+  { key: "insight", label: "深度分析", icon: Brain, anchor: "analysis" },
+  { key: "script", label: "口播文案", icon: Mic, anchor: "script" },
+  { key: "review", label: "质量检查", icon: ShieldCheck, anchor: "review" },
 ];
 
 interface HistoryItem {
@@ -72,48 +78,93 @@ function saveHistory(items: HistoryItem[]) {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 6)));
   } catch {
-    /* storage full or blocked: history is a convenience only */
+    /* storage full or blocked: history is only a convenience */
   }
 }
 
-function StepIcon({ s }: { s: StageState<unknown> }) {
-  if (s.status === "running") return <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />;
-  if (s.status === "done") return <CircleCheck className="h-4 w-4 text-emerald-500" />;
-  if (s.status === "error") return <CircleX className="h-4 w-4 text-rose-500" />;
-  return <CircleDashed className="h-4 w-4 text-slate-300" />;
-}
-
-function Progress({ run, now }: { run: AnalysisRun; now: number }) {
+function AppIcon() {
   return (
-    <div className="card mt-6 flex flex-wrap items-center gap-x-1 gap-y-2 px-4 py-3">
-      {STEPS.map((st, i) => {
-        const s = run[st.key] as StageState<unknown>;
-        const secs = s.status === "running" && s.startedAt ? Math.max(0, now - s.startedAt) / 1000 : s.ms ? s.ms / 1000 : undefined;
-        return (
-          <div key={st.key} className="flex items-center">
-            <a
-              href={st.key === "scrape" ? undefined : `#${st.key === "insight" ? "analysis" : st.key}`}
-              className={cx(
-                "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm",
-                s.status === "running" ? "bg-indigo-50 text-indigo-700" : s.status === "done" ? "text-slate-700" : "text-slate-400",
-              )}
-            >
-              <StepIcon s={s} />
-              {st.label}
-              {secs !== undefined && <span className="text-xs tabular-nums text-slate-400">{secs.toFixed(0)}s</span>}
-            </a>
-            {i < STEPS.length - 1 && <span className="mx-0.5 text-slate-200">/</span>}
-          </div>
-        );
-      })}
-      <span className="ml-auto hidden text-xs text-slate-400 md:block">深度分析与文案链路并行执行</span>
-    </div>
+    <span aria-hidden="true" className="inline-flex h-7 w-7 items-center justify-center rounded-[8px] bg-linear-to-br from-tile-blue via-tile-indigo to-tile-purple text-white">
+      <Sparkles className="h-4 w-4" strokeWidth={2} />
+    </span>
   );
 }
 
-export function Analyzer() {
-  const [input, setInput] = useState("");
-  const [run, setRun] = useState<AnalysisRun>(emptyRun);
+function StepPill({ step, s, now }: { step: (typeof STEPS)[number]; s: StageState<unknown>; now: number }) {
+  const secs = s.status === "running" && s.startedAt ? Math.max(0, now - s.startedAt) / 1000 : s.ms ? s.ms / 1000 : undefined;
+  const Icon = step.icon;
+  const content = (
+    <>
+      {s.status === "running" ? (
+        <Loader2 className="h-4 w-4 animate-spin text-info" strokeWidth={2} aria-hidden="true" />
+      ) : s.status === "done" ? (
+        <CircleCheck className="h-4 w-4 text-success" strokeWidth={2} aria-hidden="true" />
+      ) : s.status === "error" ? (
+        <CircleX className="h-4 w-4 text-danger" strokeWidth={2} aria-hidden="true" />
+      ) : (
+        <Icon className="h-4 w-4 text-label-3" strokeWidth={ICON_STROKE} aria-hidden="true" />
+      )}
+      <span>{step.label}</span>
+      {secs !== undefined && <span className="num text-[11px] text-label-2">{secs.toFixed(0)}s</span>}
+      <span className="sr-only">{{ idle: "未开始", blocked: "等待中", running: "进行中", done: "已完成", error: "失败" }[s.status]}</span>
+    </>
+  );
+  const cls = cx(
+    "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors duration-200",
+    s.status === "running" ? "bg-info-tint text-label" : s.status === "done" || s.status === "error" ? "text-label hover:bg-fill" : "text-label-2",
+  );
+  return step.anchor ? (
+    <a href={`#${step.anchor}`} className={cls}>
+      {content}
+    </a>
+  ) : (
+    <span className={cls}>{content}</span>
+  );
+}
+
+const FEATURES: Array<{ icon: LucideIcon; color: TileColor; title: string; text: string; span: string; extra?: string[] }> = [
+  {
+    icon: ScanSearch,
+    color: "blue",
+    title: "拿到真实的商品数据",
+    text: "解析商品页的价格、卖点、规格和图片，并读取 Amazon 汇总全部评价得出的「Customers say」洞察。",
+    span: "lg:col-span-3",
+    extra: ["直连解析", "Claude 联网兜底", "手动粘贴兜底"],
+  },
+  {
+    icon: Brain,
+    color: "purple",
+    title: "理解产品，而不只是翻译",
+    text: "回答谁会买、为什么买、买家怎么说、和什么比、内容该怎么讲。每条判断都标注依据，并结合商品图片。",
+    span: "lg:col-span-3",
+    extra: ["定位", "人群", "痛点", "卖点证据", "买家声音", "内容策略"],
+  },
+  {
+    icon: Mic,
+    color: "orange",
+    title: "能直接拍的口播",
+    text: "150 字以内，开头一句就是钩子，附分镜和备选钩子，可以直接试听。",
+    span: "lg:col-span-2",
+  },
+  {
+    icon: ShieldCheck,
+    color: "green",
+    title: "发布前先质检",
+    text: "规则引擎加 AI 逐条核查事实、扫描广告法用语，自动改出终稿。",
+    span: "lg:col-span-2",
+  },
+  {
+    icon: Clock,
+    color: "teal",
+    title: "大约一分钟",
+    text: "深度分析和文案链路并行运行，每一步完成就先显示出来。",
+    span: "lg:col-span-2",
+  },
+];
+
+export function Analyzer({ initialRun, initialInput = "" }: { initialRun?: AnalysisRun; initialInput?: string }) {
+  const [input, setInput] = useState(initialInput);
+  const [run, setRun] = useState<AnalysisRun>(initialRun ?? emptyRun());
   const [manualOpen, setManualOpen] = useState(false);
   const [manualText, setManualText] = useState("");
   const [health, setHealth] = useState<{ ai: boolean; model: string } | null>(null);
@@ -121,7 +172,12 @@ export function Analyzer() {
   const [now, setNow] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   // latest finished data, used by chained / retried stages
-  const dataRef = useRef<{ input: string; scrape?: ScrapeResponse; info?: InfoResponse; script?: ScriptResponse }>({ input: "" });
+  const dataRef = useRef<{ input: string; scrape?: ScrapeResponse; info?: InfoResponse; script?: ScriptResponse }>({
+    input: initialInput,
+    scrape: initialRun?.scrape.data,
+    info: initialRun?.info.data,
+    script: initialRun?.script.data,
+  });
 
   useEffect(() => {
     fetch("/api/health")
@@ -166,7 +222,6 @@ export function Analyzer() {
   );
 
   const persist = useCallback(() => {
-    // read the newest state via functional update, then store it
     setRun((current) => {
       const d = dataRef.current;
       if (d.scrape) {
@@ -250,7 +305,7 @@ export function Analyzer() {
       dataRef.current.scrape = scrape;
       setManualOpen(false);
       if (health && !health.ai) {
-        const msg = "服务器未配置 ANTHROPIC_API_KEY，AI 分析不可用（商品抓取结果已在左侧展示）";
+        const msg = "服务器未配置 ANTHROPIC_API_KEY，AI 分析不可用（左侧是商品抓取结果）";
         setRun((r) => ({ ...r, info: { status: "error", error: msg }, insight: { status: "error", error: msg }, script: { status: "blocked" }, review: { status: "blocked" } }));
         return;
       }
@@ -290,189 +345,255 @@ export function Analyzer() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const scrapeFailedCode = run.scrape.status === "error";
+  const idle = run.scrape.status === "idle";
+  const scraping = run.scrape.status === "running";
+  const scrapeFailed = run.scrape.status === "error";
   const hasAI = !!(run.info.data || run.insight.data || run.script.data);
   const md = hasAI ? buildMarkdown(run) : "";
 
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-8 sm:pt-12">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200">
-            <Sparkles className="h-3.5 w-3.5 text-indigo-500" /> Powered by Claude
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">AI 产品分析助手</h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-500">
-            粘贴一个 Amazon 商品链接，自动完成：产品信息整理 · 深度产品分析 · 短视频口播文案 · 事实与合规质检
-          </p>
+    <>
+      {/* Global nav + local step bar, frosted glass */}
+      <header className="glass sticky top-0 z-40 shadow-[0_1px_0_var(--separator)]">
+        <div className="mx-auto flex h-[52px] max-w-[1180px] items-center justify-between px-5">
+          <button
+            onClick={() => {
+              abortRef.current?.abort();
+              setRun(emptyRun());
+              setInput("");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className="flex cursor-pointer items-center gap-2.5 rounded-lg"
+          >
+            <AppIcon />
+            <span className="text-[15px] font-semibold tracking-[-0.01em] text-label">产品分析助手</span>
+          </button>
+          {health && (
+            <span className={cx("chip", health.ai ? "bg-fill text-label-2" : "bg-warning-tint text-warning")}>
+              <span aria-hidden="true" className={cx("h-1.5 w-1.5 rounded-full", health.ai ? "bg-tile-green" : "bg-tile-orange")} />
+              {health.ai ? health.model : "未配置 API Key · 仅抓取模式"}
+            </span>
+          )}
         </div>
-        {health && (
-          <span className={cx("chip", health.ai ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")}>
-            {health.ai ? `模型 ${health.model}` : "未配置 API Key：仅抓取模式"}
-          </span>
+        {!idle && (
+          <div className="border-t border-separator">
+            {/* relative: keeps the absolutely-positioned sr-only labels inside this scroll container */}
+            <nav aria-label="分析进度" className="relative mx-auto flex max-w-[1180px] items-center gap-1 overflow-x-auto px-4 py-2 [scrollbar-width:none]">
+              {STEPS.map((st, i) => (
+                <div key={st.key} className="flex items-center">
+                  <StepPill step={st} s={run[st.key] as StageState<unknown>} now={now} />
+                  {i < STEPS.length - 1 && <ChevronRight className="mx-0.5 h-3.5 w-3.5 shrink-0 text-label-3" aria-hidden="true" />}
+                </div>
+              ))}
+              <span className="ml-auto hidden shrink-0 pl-4 text-[12px] text-label-2 md:block">深度分析与文案链路并行运行</span>
+            </nav>
+          </div>
         )}
       </header>
 
-      <div className="card p-4 sm:p-5">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            analyzeUrl(input);
-          }}
-          className="flex flex-col gap-3 sm:flex-row"
-        >
-          <div className="relative flex-1">
-            <Link2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="粘贴 Amazon 商品链接，例如 https://www.amazon.com/dp/B0CXT9RSGQ"
-              className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-10 text-[15px] outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-            />
-            {input && (
-              <button type="button" onClick={() => setInput("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" aria-label="清空">
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          <button
-            type="submit"
-            disabled={!input.trim() || run.scrape.status === "running"}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-[15px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 pb-20">
+        {/* Hero */}
+        <section className={cx("mx-auto max-w-[760px] text-center", idle ? "pt-16 sm:pt-24" : "pt-8")}>
+          {idle && (
+            <div className="rise">
+              <p className="eyebrow mb-4 inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 shadow-[var(--shadow-card)]">
+                <Sparkles className="h-3.5 w-3.5 text-violet" strokeWidth={2} aria-hidden="true" />
+                由 Claude 驱动
+              </p>
+              <h1 className="title-xl text-[40px] sm:text-[60px]">
+                {/* keep each phrase intact so small screens break at the comma */}
+                <span className="inline-block">一个链接，</span>
+                <span className="inline-block">看懂一个产品。</span>
+              </h1>
+              <p className="mx-auto mt-5 max-w-[600px] text-balance text-[17px] leading-relaxed text-label-2 sm:text-[19px]">
+                粘贴 Amazon 商品链接，AI 帮你整理信息、分析卖点、写好短视频口播，并逐条核查事实。
+              </p>
+            </div>
+          )}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              analyzeUrl(input);
+            }}
+            className={cx("relative mx-auto text-left", idle ? "mt-10" : "mt-0")}
           >
-            {run.scrape.status === "running" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            开始分析
-          </button>
-        </form>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="text-slate-400">试试：</span>
-          {EXAMPLES.map((ex) => (
-            <button
-              key={ex.label}
-              onClick={() => analyzeUrl(ex.url)}
-              className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-            >
-              {ex.label}
-            </button>
-          ))}
-          <button
-            onClick={() => setManualOpen((v) => !v)}
-            className="ml-auto inline-flex items-center gap-1 text-slate-500 hover:text-slate-800"
-          >
-            <ClipboardPaste className="h-3.5 w-3.5" /> 手动粘贴商品信息
-          </button>
-        </div>
-
-        {(manualOpen || scrapeFailedCode) && run.scrape.status !== "running" && (
-          <div className="mt-4 border-t border-slate-100 pt-4">
-            {scrapeFailedCode && <ErrorBox message={run.scrape.error ?? "抓取失败"} onRetry={() => analyzeUrl(input)} />}
-            <p className="mb-2 mt-3 text-xs leading-5 text-slate-500">
-              抓取被拦截时的兜底：在浏览器打开商品页，全选（⌘/Ctrl + A）复制整页文字粘贴到这里，AI 会从中抽取商品信息并继续完成全部分析。
-            </p>
-            <textarea
-              value={manualText}
-              onChange={(e) => setManualText(e.target.value)}
-              rows={5}
-              placeholder="粘贴商品详情页的文字（标题、价格、About this item、参数、评价……）"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-            />
-            <button
-              onClick={analyzeManual}
-              disabled={manualText.trim().length < 80}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-            >
-              <ClipboardPaste className="h-4 w-4" /> 用粘贴的内容分析
-            </button>
-          </div>
-        )}
-      </div>
-
-      {run.scrape.status !== "idle" && <Progress run={run} now={now} />}
-
-      {run.scrape.status === "running" && (
-        <div className="card mt-6 flex items-center gap-3 p-6 text-sm text-slate-500">
-          <Loader2 className="h-5 w-5 animate-spin text-indigo-500" />
-          正在获取并解析商品页（直连失败时会自动切换到 Claude 联网获取）…
-        </div>
-      )}
-
-      {run.scrape.data && (
-        <div className="mt-6 grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-          <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto">
-            <ProductCard scrape={run.scrape.data} info={run.info.data?.data.productInfo} />
-            {hasAI && (
-              <div className="mt-4 flex gap-2">
-                <CopyButton text={md} label="复制 Markdown 报告" className="flex-1 justify-center" />
+            <label htmlFor="product-url" className="sr-only">
+              Amazon 商品链接
+            </label>
+            <div className="group relative flex items-center rounded-full bg-surface shadow-[var(--shadow-float)] transition-shadow duration-300 focus-within:shadow-[0_0_0_4px_rgba(0,113,227,0.18),var(--shadow-float)]">
+              <Link2 className="pointer-events-none absolute left-5 h-[18px] w-[18px] text-label-3" strokeWidth={ICON_STROKE} aria-hidden="true" />
+              <input
+                id="product-url"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="粘贴 Amazon 商品链接"
+                inputMode="url"
+                autoComplete="off"
+                spellCheck={false}
+                className="h-14 w-full rounded-full bg-transparent pl-12 pr-28 text-[16px] text-label outline-none placeholder:text-label-3"
+              />
+              {input && (
                 <button
-                  onClick={() => {
-                    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-                    const a = document.createElement("a");
-                    a.href = URL.createObjectURL(blob);
-                    a.download = `${run.scrape.data!.product.asin}-分析报告.md`;
-                    a.click();
-                    URL.revokeObjectURL(a.href);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  type="button"
+                  onClick={() => setInput("")}
+                  aria-label="清空链接"
+                  className="absolute right-[58px] flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-label-3 hover:bg-fill hover:text-label-2"
                 >
-                  <Download className="h-3.5 w-3.5" /> .md
+                  <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                 </button>
-              </div>
-            )}
-          </aside>
-          <div className="min-w-0 space-y-6">
-            <InfoSection state={run.info} onRetry={() => retry("info")} />
-            <AnalysisSection state={run.insight} onRetry={() => retry("insight")} />
-            <ScriptSection state={run.script} review={run.review} onRetry={() => retry("script")} onRegenerate={() => retry("script")} />
-            <ReviewSection state={run.review} script={run.script} onRetry={() => retry("review")} />
-          </div>
-        </div>
-      )}
+              )}
+              <button
+                type="submit"
+                disabled={!input.trim() || scraping}
+                aria-label="开始分析"
+                className="absolute right-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-accent text-white transition duration-200 hover:bg-accent-hover active:scale-95 disabled:cursor-not-allowed disabled:bg-fill-2 disabled:text-label-3"
+              >
+                {scraping ? <Loader2 className="h-[18px] w-[18px] animate-spin" strokeWidth={2.25} aria-hidden="true" /> : <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden="true" />}
+              </button>
+            </div>
+          </form>
 
-      {run.scrape.status === "idle" && (
-        <>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ["获取商品页", "直连抓取并解析 HTML，读取 Amazon 内嵌的「Customers say」评价洞察；被拦截时自动改用 Claude 联网获取，或手动粘贴兜底。"],
-              ["理解产品", "中文产品档案 + 深度分析：定位、人群、场景、痛点、卖点证据、买家声音、顾虑、竞争、内容策略，并结合商品图片。"],
-              ["口播文案", "按真实短视频结构生成：前 5 秒钩子 → 痛点 → 卖点 → 背书 → 行动，附分镜、备选钩子，可直接试听。"],
-              ["质量检查", "规则引擎（字数 / 钩子 / 广告法用语 / 数字溯源）+ AI 逐条事实核查，自动修正夸大和无依据的表述。"],
-            ].map(([t, d], i) => (
-              <div key={t} className="card p-4">
-                <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-xs font-semibold text-white">{i + 1}</div>
-                <div className="text-sm font-semibold text-slate-900">{t}</div>
-                <p className="mt-1 text-xs leading-5 text-slate-500">{d}</p>
-              </div>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            {EXAMPLES.map((ex) => (
+              <button key={ex.label} onClick={() => analyzeUrl(ex.url)} disabled={scraping} className="btn btn-surface min-h-8 px-3.5 text-[13px]">
+                {ex.label}
+              </button>
             ))}
+            <button onClick={() => setManualOpen((v) => !v)} aria-expanded={manualOpen} className="btn btn-plain min-h-8 px-2 text-[13px]">
+              <ClipboardPaste className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" />
+              手动粘贴商品信息
+            </button>
           </div>
-          {history.length > 0 && (
-            <div className="mt-8">
-              <div className="mb-3 flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                <History className="h-4 w-4" /> 最近分析
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {history.map((h) => (
-                  <button key={h.id} onClick={() => restore(h)} className="card flex items-center gap-3 p-3 text-left transition hover:shadow-md">
-                    {h.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={h.image} alt="" className="h-12 w-12 shrink-0 rounded-lg object-contain" />
-                    ) : (
-                      <div className="h-12 w-12 shrink-0 rounded-lg bg-slate-100" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-slate-800">{h.title}</div>
-                      <div className="text-xs text-slate-400">{new Date(h.at).toLocaleString("zh-CN")}</div>
-                    </div>
-                  </button>
-                ))}
+
+          {(manualOpen || scrapeFailed) && !scraping && (
+            <div className="card rise mx-auto mt-6 p-5 text-left sm:p-6">
+              {scrapeFailed && (
+                <div className="mb-4">
+                  <ErrorBox message={run.scrape.error ?? "抓取失败"} onRetry={() => analyzeUrl(input)} />
+                </div>
+              )}
+              <label htmlFor="manual-text" className="text-[15px] font-semibold text-label">
+                手动粘贴商品信息
+              </label>
+              <p className="mt-1 text-[13px] leading-6 text-label-2">
+                抓取被拦截时的兜底方案：在浏览器打开商品页，全选（⌘/Ctrl + A）复制整页文字粘贴到这里，AI 会抽取商品信息并完成全部分析。
+              </p>
+              <textarea
+                id="manual-text"
+                value={manualText}
+                onChange={(e) => setManualText(e.target.value)}
+                rows={5}
+                placeholder="标题、价格、About this item、参数、评价……"
+                className="tile mt-3 w-full resize-y p-4 text-[14px] leading-6 text-label outline-none placeholder:text-label-3 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.18)]"
+              />
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="num text-[12px] text-label-2">{manualText.trim().length} 字符</span>
+                <button onClick={analyzeManual} disabled={manualText.trim().length < 80} className="btn btn-primary min-h-10 px-5">
+                  用粘贴的内容分析
+                </button>
               </div>
             </div>
           )}
-        </>
-      )}
+        </section>
 
-      <footer className="mt-12 text-center text-xs leading-5 text-slate-400">
-        商品信息来自公开的 Amazon 商品页；AI 生成内容已做事实核查，但发布前仍建议人工确认价格等关键信息。
-      </footer>
-    </main>
+        {scraping && (
+          <div className="card rise mx-auto mt-8 flex max-w-[760px] items-center gap-3 px-6 py-5 text-[14px] text-label-2" role="status">
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-info" strokeWidth={2} aria-hidden="true" />
+            正在获取并解析商品页，直连失败会自动改用 Claude 联网获取…
+          </div>
+        )}
+
+        {/* Results */}
+        {run.scrape.data && (
+          <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+            <aside className="lg:sticky lg:top-[124px] lg:max-h-[calc(100vh-140px)] lg:self-start lg:overflow-y-auto lg:rounded-[28px] lg:pb-2 [scrollbar-width:none]">
+              <ProductCard scrape={run.scrape.data} info={run.info.data?.data.productInfo} />
+              {hasAI && (
+                <div className="mt-4 flex gap-2">
+                  <CopyButton text={md} label="复制 Markdown 报告" className="btn-surface min-h-10 flex-1" />
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+                      const a = document.createElement("a");
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `${run.scrape.data!.product.asin}-分析报告.md`;
+                      a.click();
+                      URL.revokeObjectURL(a.href);
+                    }}
+                    className="btn btn-surface min-h-10"
+                  >
+                    <Download className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" /> 下载
+                  </button>
+                </div>
+              )}
+            </aside>
+            <div className="min-w-0 space-y-6">
+              <InfoSection state={run.info} onRetry={() => retry("info")} />
+              <AnalysisSection state={run.insight} onRetry={() => retry("insight")} />
+              <ScriptSection state={run.script} review={run.review} onRetry={() => retry("script")} onRegenerate={() => retry("script")} />
+              <ReviewSection state={run.review} script={run.script} onRetry={() => retry("review")} />
+            </div>
+          </div>
+        )}
+
+        {/* Idle: bento feature grid + history */}
+        {idle && (
+          <>
+            <div className="mt-20 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+              {FEATURES.map((f, i) => (
+                <div key={f.title} className={cx("card rise flex flex-col p-6 sm:p-7", f.span)} style={{ animationDelay: `${120 + i * 50}ms` }}>
+                  <IconTile icon={f.icon} color={f.color} size="lg" />
+                  <h2 className="mt-5 text-[19px] font-semibold tracking-[-0.02em] text-label">{f.title}</h2>
+                  <p className="mt-2 text-[14px] leading-6 text-label-2">{f.text}</p>
+                  {f.extra && (
+                    <div className="mt-auto flex flex-wrap gap-1.5 pt-5">
+                      {f.extra.map((x) => (
+                        <span key={x} className="chip bg-fill text-label-2">
+                          {x}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {history.length > 0 && (
+              <section className="mt-14" aria-labelledby="history-title">
+                <h2 id="history-title" className="mb-3 px-1 text-[13px] font-semibold text-label-2">
+                  最近分析
+                </h2>
+                <div className="card overflow-hidden">
+                  {history.map((h, i) => (
+                    <button
+                      key={h.id}
+                      onClick={() => restore(h)}
+                      className={cx("flex w-full cursor-pointer items-center gap-3.5 px-5 py-3 text-left transition-colors hover:bg-fill", i > 0 && "border-t border-separator")}
+                    >
+                      {h.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={h.image} alt="" className="h-11 w-11 shrink-0 rounded-[10px] bg-white object-contain p-1" />
+                      ) : (
+                        <span className="h-11 w-11 shrink-0 rounded-[10px] bg-fill" />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[15px] font-medium text-label">{h.title}</span>
+                        <span className="num block text-[12px] text-label-2">{new Date(h.at).toLocaleString("zh-CN")}</span>
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-label-3" strokeWidth={ICON_STROKE} aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
+        <footer className="mt-16 text-center text-[12px] leading-5 text-label-2">
+          商品信息来自公开的 Amazon 商品页。AI 生成的内容已做事实核查，发布前仍建议人工确认价格等关键信息。
+        </footer>
+      </main>
+    </>
   );
 }

@@ -43,3 +43,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local UI preview fixtures (sample data, not real model output)
+/src/dev/
+/src/app/dev-preview/

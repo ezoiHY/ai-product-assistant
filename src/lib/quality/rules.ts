@@ -40,12 +40,16 @@ interface BannedRule {
 // 《广告法》第九条 绝对化用语 + common platform rules. Patterns are written to
 // avoid harmless words like 最近 / 最后 / 第一次.
 const BANNED: BannedRule[] = [
-  { re: /最(好|强|佳|优|低|高|便宜|划算|实惠|大|小|轻|快|安全|舒服|舒适|实用|值|火|热|新|先进|受欢迎|顶级)/g, reason: "绝对化用语（最…）", severity: "fail" },
+  // any 最X superlative except harmless words such as 最近 / 最后 / 最怕 / 最多(=up to)
+  { re: /最(?!近|后|初|终|怕|多|少|早|晚|迟)[一-龥]{1,2}/g, reason: "绝对化用语（最…）", severity: "fail" },
+  { re: /最后(一天|一波|机会)/g, reason: "可能构成虚假紧迫感，需有真实依据", severity: "warn" },
   { re: /全网(最|第一|独家|首发)|史上最|宇宙级|天花板/g, reason: "绝对化/夸大用语", severity: "fail" },
   { re: /(排名|销量|全网|行业|全球)第一|第一(品牌|名)|NO\.?\s?1|No\.?\s?1|TOP\s?1/gi, reason: "绝对化用语（第一）", severity: "fail" },
   { re: /唯一|独一无二|首选|首个|首款|首家/g, reason: "绝对化用语（唯一/首选）", severity: "fail" },
   { re: /顶级|顶尖|极品|极致|至尊|王牌|无敌|完美/g, reason: "绝对化/夸大用语", severity: "fail" },
-  { re: /100%|百分之百|绝对|永久|永不|万能|零风险|无副作用/g, reason: "绝对化承诺", severity: "fail" },
+  { re: /绝对|永久|永不|万能|零风险|无副作用/g, reason: "绝对化承诺", severity: "fail" },
+  // fine for a real composition ("100% 纯棉"), but must be backed by the product data
+  { re: /100%|百分之百/g, reason: "百分百表述需有资料依据", severity: "warn" },
   { re: /国家级|世界级|全球领先|国际领先/g, reason: "无依据的级别表述", severity: "fail" },
   { re: /根治|治愈|特效|药到病除|包治|治疗|疗效|抗癌|降血压|降血糖/g, reason: "医疗/功效承诺", severity: "fail" },
   { re: /最后一天|马上涨价|即将涨价|仅剩\d*|错过再等|史低|秒杀/g, reason: "可能构成虚假紧迫感，需有真实依据", severity: "warn" },

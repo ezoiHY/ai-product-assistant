@@ -1,50 +1,81 @@
 "use client";
 
-import { AlertTriangle, Check, Copy, RotateCcw } from "lucide-react";
+import { Check, Copy, RotateCcw, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 export function cx(...c: Array<string | false | null | undefined>) {
   return c.filter(Boolean).join(" ");
 }
 
+export const ICON_STROKE = 1.75;
+
+const TILE_BG = {
+  blue: "bg-tile-blue",
+  green: "bg-tile-green",
+  orange: "bg-tile-orange",
+  purple: "bg-tile-purple",
+  pink: "bg-tile-pink",
+  indigo: "bg-tile-indigo",
+  teal: "bg-tile-teal",
+  red: "bg-tile-red",
+  gray: "bg-tile-gray",
+} as const;
+export type TileColor = keyof typeof TILE_BG;
+
+/** iOS Settings-style rounded icon tile. Decorative: always next to a text label. */
+export function IconTile({ icon: Icon, color, size = "md" }: { icon: LucideIcon; color: TileColor; size?: "sm" | "md" | "lg" }) {
+  const box = size === "lg" ? "h-11 w-11 rounded-[13px]" : size === "sm" ? "h-7 w-7 rounded-[8px]" : "h-9 w-9 rounded-[10px]";
+  const glyph = size === "lg" ? "h-[22px] w-[22px]" : size === "sm" ? "h-4 w-4" : "h-[18px] w-[18px]";
+  return (
+    <span aria-hidden="true" className={cx("inline-flex shrink-0 items-center justify-center text-white", box, TILE_BG[color])}>
+      <Icon className={glyph} strokeWidth={2} />
+    </span>
+  );
+}
+
 export function Section({
   id,
-  index,
+  icon,
+  color,
   title,
   subtitle,
   right,
   children,
 }: {
   id: string;
-  index: string;
+  icon: LucideIcon;
+  color: TileColor;
   title: string;
   subtitle?: ReactNode;
   right?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section id={id} className="card scroll-mt-24 p-5 sm:p-6">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-xs font-semibold text-white">
-            {index}
-          </span>
+    <section id={id} aria-labelledby={`${id}-title`} className="card rise scroll-mt-28 p-5 sm:p-8">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3.5">
+          <IconTile icon={icon} color={color} size="lg" />
           <div>
-            <h2 className="text-lg font-semibold leading-7 text-slate-900">{title}</h2>
-            {subtitle && <div className="mt-0.5 text-sm text-slate-500">{subtitle}</div>}
+            <h2 id={`${id}-title`} className="text-[21px] font-semibold leading-tight tracking-[-0.02em] text-label">
+              {title}
+            </h2>
+            {subtitle && <p className="mt-0.5 text-[13px] text-label-2">{subtitle}</p>}
           </div>
         </div>
-        {right && <div className="flex items-center gap-2">{right}</div>}
-      </div>
+        {right && <div className="flex flex-wrap items-center gap-2">{right}</div>}
+      </header>
       {children}
     </section>
   );
 }
 
-export function Block({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
+export function Block({ title, aside, children, className }: { title: string; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div className={cx("mb-6 last:mb-0", className)}>
-      <h3 className="mb-2.5 text-sm font-semibold text-slate-800">{title}</h3>
+    <div className={cx("mb-8 last:mb-0", className)}>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h3 className="text-[15px] font-semibold tracking-[-0.01em] text-label">{title}</h3>
+        {aside}
+      </div>
       {children}
     </div>
   );
@@ -52,27 +83,34 @@ export function Block({ title, children, className }: { title: string; children:
 
 export function SkeletonLines({ lines = 5 }: { lines?: number }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" aria-hidden="true">
       {Array.from({ length: lines }).map((_, i) => (
-        <div key={i} className="skeleton h-4" style={{ width: `${92 - ((i * 17) % 40)}%` }} />
+        <div key={i} className="skeleton h-4" style={{ width: `${94 - ((i * 17) % 38)}%` }} />
       ))}
+    </div>
+  );
+}
+
+export function Waiting({ text }: { text: string }) {
+  return (
+    <div className="space-y-5" role="status" aria-live="polite">
+      <p className="text-[13px] text-label-2">{text}</p>
+      <SkeletonLines lines={4} />
+      <SkeletonLines lines={3} />
     </div>
   );
 }
 
 export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-      <div className="flex items-start gap-2">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-        <span>{message}</span>
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-danger-tint px-4 py-3.5 text-[14px] text-danger">
+      <div className="flex items-start gap-2.5">
+        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={ICON_STROKE} aria-hidden="true" />
+        <span className="leading-6">{message}</span>
       </div>
       {onRetry && (
-        <button
-          onClick={onRetry}
-          className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
-        >
-          <RotateCcw className="h-3.5 w-3.5" /> 重试
+        <button onClick={onRetry} className="btn bg-surface text-danger hover:opacity-80">
+          <RotateCcw className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" /> 重试
         </button>
       )}
     </div>
@@ -95,30 +133,31 @@ export function CopyButton({ text, label = "复制", className }: { text: string
           ta.remove();
         }
         setDone(true);
-        setTimeout(() => setDone(false), 1500);
+        setTimeout(() => setDone(false), 1600);
       }}
-      className={cx(
-        "inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50",
-        className,
-      )}
+      className={cx("btn btn-secondary", className)}
     >
-      {done ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-      {done ? "已复制" : label}
+      {done ? (
+        <Check className="h-3.5 w-3.5 text-success" strokeWidth={2.25} aria-hidden="true" />
+      ) : (
+        <Copy className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} aria-hidden="true" />
+      )}
+      <span aria-live="polite">{done ? "已复制" : label}</span>
     </button>
   );
 }
 
 const TONES = {
-  slate: "border-slate-200 bg-slate-50 text-slate-600",
-  green: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  amber: "border-amber-200 bg-amber-50 text-amber-700",
-  red: "border-rose-200 bg-rose-50 text-rose-700",
-  blue: "border-sky-200 bg-sky-50 text-sky-700",
-  violet: "border-violet-200 bg-violet-50 text-violet-700",
+  neutral: "bg-fill text-label-2",
+  green: "bg-success-tint text-success",
+  amber: "bg-warning-tint text-warning",
+  red: "bg-danger-tint text-danger",
+  blue: "bg-info-tint text-info",
+  violet: "bg-violet-tint text-violet",
 } as const;
 export type Tone = keyof typeof TONES;
 
-export function Chip({ tone = "slate", children, title }: { tone?: Tone; children: ReactNode; title?: string }) {
+export function Chip({ tone = "neutral", children, title }: { tone?: Tone; children: ReactNode; title?: string }) {
   return (
     <span className={cx("chip", TONES[tone])} title={title}>
       {children}
@@ -130,9 +169,9 @@ export function Evidence({ text }: { text: string }) {
   if (!text) return null;
   const inferred = /\[推断\]/.test(text);
   return (
-    <p className={cx("mt-1 text-xs leading-5", inferred ? "text-amber-700/80" : "text-slate-400")}>
-      <span className="mr-1">{inferred ? "推断" : "依据"}</span>
-      {text}
+    <p className={cx("mt-1.5 text-[12px] leading-5", inferred ? "text-warning" : "text-label-2")}>
+      <span className="mr-1.5 font-medium">{inferred ? "推断" : "依据"}</span>
+      {text.replace(/\[推断\]\s*/, "")}
     </p>
   );
 }

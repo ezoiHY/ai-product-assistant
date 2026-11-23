@@ -1,60 +1,70 @@
 "use client";
 
+import { FileText } from "lucide-react";
 import type { InfoResponse, StageState } from "@/lib/api-types";
-import { Block, ErrorBox, Section, SkeletonLines } from "./ui";
+import { Block, ErrorBox, Section, Waiting } from "./ui";
 
 export function InfoSection({ state, onRetry }: { state: StageState<InfoResponse>; onRetry: () => void }) {
   const info = state.data?.data.productInfo;
+  const facts: Array<[string, string]> = info
+    ? [
+        ["产品名称", info.nameZh],
+        ["品类", info.category],
+        ["价格", info.price],
+        ["口碑", info.socialProof],
+        ...(info.variants ? ([["款式", info.variants]] as Array<[string, string]>) : []),
+      ]
+    : [];
+
   return (
     <Section
       id="info"
-      index="1"
+      icon={FileText}
+      color="blue"
       title="产品信息整理"
-      subtitle="从商品页提取的关键信息，翻译并提炼为中文"
-      right={state.ms ? <span className="text-xs text-slate-400">{(state.ms / 1000).toFixed(1)}s</span> : null}
+      subtitle="从商品页提取关键信息，翻译并提炼成中文"
+      right={state.ms ? <span className="num text-[12px] text-label-2">{(state.ms / 1000).toFixed(1)}s</span> : null}
     >
       {state.status === "error" && <ErrorBox message={state.error ?? "失败"} onRetry={onRetry} />}
-      {state.status === "running" && <SkeletonLines lines={6} />}
+      {state.status === "running" && <Waiting text="正在整理中文产品档案…" />}
       {info && (
         <>
-          <p className="mb-5 rounded-xl bg-indigo-50/70 px-4 py-3 text-[15px] leading-7 text-slate-800">{info.oneLiner}</p>
-          <div className="mb-6 grid gap-3 sm:grid-cols-2">
-            {[
-              ["产品名称", info.nameZh],
-              ["品类", info.category],
-              ["价格", info.price],
-              ["口碑", info.socialProof],
-              ...(info.variants ? [["款式", info.variants]] : []),
-            ].map(([k, v]) => (
-              <div key={k} className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
-                <div className="label">{k}</div>
-                <div className="mt-1 text-sm leading-6 text-slate-800">{v}</div>
+          <p className="mb-7 text-balance text-[21px] font-semibold leading-snug tracking-[-0.02em] text-label">{info.oneLiner}</p>
+
+          <div className="mb-8 grid gap-2.5 sm:grid-cols-2">
+            {facts.map(([k, v]) => (
+              <div key={k} className="tile px-4 py-3.5">
+                <div className="eyebrow">{k}</div>
+                <div className="mt-1 text-[14px] leading-6 text-label">{v}</div>
               </div>
             ))}
           </div>
+
           <Block title="核心功能">
-            <ul className="grid gap-2.5 sm:grid-cols-2">
+            <ul className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
               {info.coreFeatures.map((f, i) => (
-                <li key={i} className="rounded-xl border border-slate-100 p-3">
-                  <div className="text-sm font-medium text-slate-900">{f.title}</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-600">{f.detail}</div>
+                <li key={i} className="flex gap-3">
+                  <span aria-hidden="true" className="num mt-0.5 w-5 shrink-0 text-[15px] font-semibold text-label-3">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <div>
+                    <div className="text-[15px] font-semibold tracking-[-0.01em] text-label">{f.title}</div>
+                    <div className="mt-1 text-[14px] leading-6 text-label-2">{f.detail}</div>
+                  </div>
                 </li>
               ))}
             </ul>
           </Block>
+
           <Block title="关键规格">
-            <div className="overflow-hidden rounded-xl border border-slate-100">
-              <table className="w-full text-sm">
-                <tbody>
-                  {info.keySpecs.map((s, i) => (
-                    <tr key={i} className="border-b border-slate-100 last:border-0">
-                      <td className="w-1/3 bg-slate-50/70 px-4 py-2 text-slate-500">{s.name}</td>
-                      <td className="px-4 py-2 text-slate-800">{s.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <dl className="divide-y divide-separator border-y border-separator">
+              {info.keySpecs.map((s, i) => (
+                <div key={i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-4 py-3 text-[14px]">
+                  <dt className="text-label-2">{s.name}</dt>
+                  <dd className="text-label [overflow-wrap:anywhere]">{s.value}</dd>
+                </div>
+              ))}
+            </dl>
           </Block>
         </>
       )}

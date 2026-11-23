@@ -3,21 +3,28 @@
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-react";
 import type { ScriptCheck } from "@/lib/quality/rules";
 
+const STATUS_TEXT = { pass: "通过", warn: "注意", fail: "未通过" } as const;
+
 export function ChecksList({ checks }: { checks: ScriptCheck[] }) {
   return (
-    <ul className="grid gap-2 sm:grid-cols-2">
+    <ul className="tile divide-y divide-separator">
       {checks.map((c) => (
-        <li key={c.id} className="flex items-start gap-2 rounded-xl border border-slate-100 px-3 py-2.5 text-sm">
+        <li key={c.id} className="flex items-start gap-3 px-4 py-3">
           {c.status === "pass" ? (
-            <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+            <CircleCheck className="mt-0.5 h-[18px] w-[18px] shrink-0 text-success" strokeWidth={2} aria-hidden="true" />
           ) : c.status === "warn" ? (
-            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <TriangleAlert className="mt-0.5 h-[18px] w-[18px] shrink-0 text-warning" strokeWidth={2} aria-hidden="true" />
           ) : (
-            <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
+            <CircleX className="mt-0.5 h-[18px] w-[18px] shrink-0 text-danger" strokeWidth={2} aria-hidden="true" />
           )}
-          <div>
-            <div className="font-medium text-slate-800">{c.label}</div>
-            <div className="text-xs leading-5 text-slate-500">{c.detail}</div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[14px] font-medium text-label">{c.label}</span>
+              <span className={c.status === "pass" ? "text-[12px] text-success" : c.status === "warn" ? "text-[12px] text-warning" : "text-[12px] text-danger"}>
+                {STATUS_TEXT[c.status]}
+              </span>
+            </div>
+            <div className="mt-0.5 text-[12px] leading-5 text-label-2 [overflow-wrap:anywhere]">{c.detail}</div>
           </div>
         </li>
       ))}
@@ -57,16 +64,18 @@ export function diffChars(a: string, b: string): Array<{ t: "same" | "add" | "de
 export function DiffView({ before, after }: { before: string; after: string }) {
   const parts = diffChars(before, after);
   return (
-    <p className="text-sm leading-7 text-slate-700">
+    <p className="text-[15px] leading-8 text-label">
       {parts.map((p, i) =>
         p.t === "same" ? (
           <span key={i}>{p.s}</span>
         ) : p.t === "del" ? (
-          <del key={i} className="bg-rose-100 text-rose-700 decoration-rose-400">
+          <del key={i} className="rounded-[4px] bg-danger-tint px-0.5 text-danger decoration-1">
+            <span className="sr-only">删除：</span>
             {p.s}
           </del>
         ) : (
-          <ins key={i} className="bg-emerald-100 text-emerald-800 no-underline">
+          <ins key={i} className="rounded-[4px] bg-success-tint px-0.5 text-success no-underline">
+            <span className="sr-only">新增：</span>
             {p.s}
           </ins>
         ),

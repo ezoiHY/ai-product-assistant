@@ -1,43 +1,244 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------
+   Design tokens — Apple-style semantic colors (light + dark).
+   Components only use these tokens, never raw hex values.
+------------------------------------------------------------------- */
 :root {
-  --background: #f6f7fb;
-  --foreground: #0f172a;
-  color-scheme: light;
+  color-scheme: light dark;
+
+  --canvas: #f5f5f7;
+  --surface: #ffffff;
+  --fill: #f5f5f7;
+  --fill-2: #e8e8ed;
+  --label: #1d1d1f;
+  --label-2: #6e6e73;
+  --label-3: #86868b;
+  --separator: rgba(0, 0, 0, 0.08);
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --link: #0066cc;
+
+  /* status colors: high-contrast variants for text, tints for backgrounds */
+  --success: #248a3d;
+  --success-tint: rgba(52, 199, 89, 0.12);
+  --warning: #c93400;
+  --warning-tint: rgba(255, 149, 0, 0.13);
+  --danger: #d70015;
+  --danger-tint: rgba(255, 59, 48, 0.1);
+  --info: #0066cc;
+  --info-tint: rgba(0, 113, 227, 0.09);
+  --violet: #8944ab;
+  --violet-tint: rgba(175, 82, 222, 0.11);
+  --highlight: rgba(255, 214, 10, 0.42);
+
+  --glass: rgba(255, 255, 255, 0.72);
+  --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.02), 0 6px 24px rgba(0, 0, 0, 0.05);
+  --shadow-float: 0 2px 6px rgba(0, 0, 0, 0.04), 0 18px 48px rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #000000;
+    --surface: #1c1c1e;
+    --fill: #2c2c2e;
+    --fill-2: #3a3a3c;
+    --label: #f5f5f7;
+    --label-2: #a1a1a6;
+    --label-3: #8e8e93;
+    --separator: rgba(255, 255, 255, 0.12);
+    --accent: #0071e3;
+    --accent-hover: #0a84ff;
+    --link: #2997ff;
+
+    --success: #30d158;
+    --success-tint: rgba(48, 209, 88, 0.16);
+    --warning: #ff9f0a;
+    --warning-tint: rgba(255, 159, 10, 0.16);
+    --danger: #ff453a;
+    --danger-tint: rgba(255, 69, 58, 0.16);
+    --info: #409cff;
+    --info-tint: rgba(10, 132, 255, 0.18);
+    --violet: #bf5af2;
+    --violet-tint: rgba(191, 90, 242, 0.18);
+    --highlight: rgba(255, 214, 10, 0.3);
+
+    --glass: rgba(22, 22, 23, 0.72);
+    --shadow-card: none;
+    --shadow-float: 0 18px 48px rgba(0, 0, 0, 0.5);
+  }
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans), "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-fill: var(--fill);
+  --color-fill-2: var(--fill-2);
+  --color-label: var(--label);
+  --color-label-2: var(--label-2);
+  --color-label-3: var(--label-3);
+  --color-separator: var(--separator);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-link: var(--link);
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+  --color-info: var(--info);
+  --color-info-tint: var(--info-tint);
+  --color-violet: var(--violet);
+  --color-violet-tint: var(--violet-tint);
+  --color-highlight: var(--highlight);
+
+  /* iOS-style icon tile fills (decorative, always paired with a text label) */
+  --color-tile-blue: #0a84ff;
+  --color-tile-green: #30d158;
+  --color-tile-orange: #ff9f0a;
+  --color-tile-purple: #bf5af2;
+  --color-tile-pink: #ff375f;
+  --color-tile-indigo: #5e5ce6;
+  --color-tile-teal: #40c8e0;
+  --color-tile-red: #ff453a;
+  --color-tile-gray: #8e8e93;
+
+  /* SF Pro + PingFang on Apple devices, sensible fallbacks elsewhere */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB",
+    "Helvetica Neue", "Segoe UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --ease-apple: cubic-bezier(0.28, 0.11, 0.32, 1);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--canvas);
+  color: var(--label);
   font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(0, 113, 227, 0.22);
+}
+
+:focus-visible {
+  outline: 3px solid rgba(0, 113, 227, 0.55);
+  outline-offset: 2px;
+  border-radius: 10px;
 }
 
 @layer components {
+  /* surfaces */
   .card {
-    @apply rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)];
+    @apply rounded-[28px] bg-surface;
+    box-shadow: var(--shadow-card);
   }
+  .tile {
+    @apply rounded-2xl bg-fill;
+  }
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+  .hairline {
+    box-shadow: inset 0 0 0 1px var(--separator);
+  }
+
+  /* typography */
+  .eyebrow {
+    @apply text-xs font-semibold tracking-wide text-label-2;
+  }
+  .title-xl {
+    @apply font-semibold text-label;
+    letter-spacing: -0.03em;
+    line-height: 1.07;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* controls */
+  .btn {
+    @apply inline-flex min-h-9 cursor-pointer items-center justify-center gap-1.5 rounded-full px-4 text-[13px] font-medium transition duration-200 select-none disabled:cursor-not-allowed disabled:opacity-40;
+    transition-timing-function: var(--ease-apple);
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .btn-primary {
+    @apply bg-accent text-white hover:bg-accent-hover;
+  }
+  .btn-secondary {
+    @apply bg-fill text-label hover:bg-fill-2;
+  }
+  .btn-plain {
+    @apply text-link hover:underline;
+  }
+  /* for buttons that sit directly on the page canvas */
+  .btn-surface {
+    @apply bg-surface text-label hover:text-link;
+    box-shadow: var(--shadow-card), inset 0 0 0 1px var(--separator);
+  }
+
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium;
-  }
-  .label {
-    @apply text-[11px] font-semibold uppercase tracking-wider text-slate-400;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-[3px] text-xs font-medium whitespace-nowrap;
   }
 }
 
+/* entrance motion: transform + opacity only */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.55s var(--ease-apple) both;
+}
+
 @keyframes shimmer {
-  0% { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+  0% {
+    background-position: -480px 0;
+  }
+  100% {
+    background-position: 480px 0;
+  }
 }
 .skeleton {
-  background: linear-gradient(90deg, #eef0f5 0px, #f7f8fb 120px, #eef0f5 240px);
-  background-size: 800px 100%;
-  animation: shimmer 1.4s infinite linear;
-  border-radius: 8px;
+  background: linear-gradient(90deg, var(--fill) 0px, var(--fill-2) 160px, var(--fill) 320px);
+  background-size: 960px 100%;
+  animation: shimmer 1.6s infinite linear;
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .skeleton {
+    animation: none;
+  }
+  .btn:active:not(:disabled) {
+    transform: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
 }
