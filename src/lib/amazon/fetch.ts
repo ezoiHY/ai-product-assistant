@@ -83,13 +83,26 @@ function mergeCookies(base: string, setCookies: string[]): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Session cookies from pages Amazon served normally, kept per marketplace for the
+// life of this server instance, so consecutive requests look like one returning
+// browser rather than a stream of brand-new visitors. Cookies handed out with a
+// CAPTCHA page are only used within that request, so a flagged session can't stick.
+const SESSION_TTL_MS = 30 * 60_000;
+const sessions = new Map<string, { cookie: string; exp: number }>();
+
+function sessionCookie(domain: string, base: string): string {
+  const s = sessions.get(domain);
+  if (!s || Date.now() > s.exp) return base;
+  return mergeCookies(base, s.cookie.split("; "));
+}
+
 export async function fetchProductPage(asin: string, domain: string, budgetMs = 25_000): Promise<FetchOutcome> {
   const started = Date.now();
   const mk = MARKETPLACES[domain];
   // Ask for English where the marketplace supports it; otherwise Amazon may
   // auto-translate the page based on the server's IP location.
   const lang = mk?.en ?? mk?.locale ?? "en_US";
-  let cookie = `i18n-prefs=${mk?.currency ?? "USD"}; lc-main=${lang}`;
+  let cookie = sessionCookie(domain, `i18n-prefs=${mk?.currency ?? "USD"}; lc-main=${lang}`);
   const variants = [
     `https://www.${domain}/dp/${asin}?language=${lang}`,
     `https://www.${domain}/dp/${asin}?th=1&psc=1&language=${lang}`,
@@ -113,9 +126,11 @@ export async function fetchProductPage(asin: string, domain: string, budgetMs = 
       const html = await res.text();
       const verdict = classifyPage(html, res.status);
       attempts.push({ url, status: res.status, verdict, ms: Date.now() - t0 });
-      if (verdict === "ok") return { ok: true, html, attempts };
-      // keep the session cookies Amazon hands out; a returning "browser" is less suspicious
       cookie = mergeCookies(cookie, res.headers.getSetCookie?.() ?? []);
+      if (verdict === "ok") {
+        sessions.set(domain, { cookie, exp: Date.now() + SESSION_TTL_MS });
+        return { ok: true, html, attempts };
+      }
       if (verdict === "not_found") {
         notFoundCount++;
         if (notFoundCount >= 2) break; // two different URL variants agree: the product page is gone
@@ -123,7 +138,8 @@ export async function fetchProductPage(asin: string, domain: string, budgetMs = 
     } catch {
       attempts.push({ url, verdict: "network_error", ms: Date.now() - t0 });
     }
-    await sleep(800 + Math.random() * 700);
+    // back off: rapid-fire retries only deepen Amazon's throttling
+    await sleep(1500 + Math.random() * 1000);
   }
 
   const verdicts = attempts.map((a) => a.verdict);

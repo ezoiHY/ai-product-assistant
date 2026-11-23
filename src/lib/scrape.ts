@@ -1,7 +1,8 @@
 // Orchestrates: parse link -> direct fetch + parse -> (fallback) Claude web tools.
 import { aiConfigured } from "./ai/client";
+import { llmConfig } from "./ai/config";
 import { extractFromText, extractWithWeb } from "./ai/extract";
-import { fetchProductPage } from "./amazon/fetch";
+import { fetchProductPage, type AttemptLog } from "./amazon/fetch";
 import { buildPageDigest, completenessOf, parseProductHtml } from "./amazon/parse";
 import { extractAsinFromPath, parseAmazonInput } from "./amazon/url";
 import { AppError, TTLCache } from "./server-utils";
@@ -16,6 +17,18 @@ const FAIL_MESSAGES: Record<string, { msg: string; status: number }> = {
   network: { msg: "连接 Amazon 超时，请稍后重试。", status: 504 },
 };
 
+const VERDICT_ZH: Record<string, string> = { captcha: "验证码页", blocked: "拒绝访问", not_found: "页面不存在", network_error: "连接失败", ok: "正常" };
+
+/** e.g. "验证码页 ×2、HTTP 503 ×1" — what Amazon answered on each attempt. */
+function summarizeAttempts(attempts: AttemptLog[]): string {
+  const counts = new Map<string, number>();
+  for (const a of attempts) {
+    const k = a.verdict === "blocked" && a.status ? `HTTP ${a.status}` : (VERDICT_ZH[a.verdict] ?? a.verdict);
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return [...counts].map(([k, n]) => `${k} ×${n}`).join("、");
+}
+
 export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {}): Promise<ScrapeResult & { cached?: boolean }> {
   const t0 = Date.now();
   const { asin, domain, canonicalUrl } = await parseAmazonInput(input);
@@ -26,6 +39,7 @@ export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {
   }
 
   const outcome = await fetchProductPage(asin, domain);
+  console.info(`[scrape] ${domain}/${asin} ${outcome.ok ? "ok" : outcome.reason} attempts=${outcome.attempts.map((a) => `${a.verdict}:${a.status ?? "-"}:${a.ms}ms`).join(",")}`);
   if (outcome.ok) {
     const { product, warnings } = parseProductHtml(outcome.html, { asin, domain, url: canonicalUrl });
     if (product.title) {
@@ -45,7 +59,9 @@ export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {
 
   const reason = outcome.ok ? "blocked" : outcome.reason;
   // Fallback: Claude's own web tools (Anthropic fetches the page / searches the web).
-  if (aiConfigured()) {
+  // Skipped through custom gateways: they usually don't run Anthropic's server
+  // tools, and a model without them could answer from memory instead.
+  if (aiConfigured() && !llmConfig().baseURL && reason !== "not_found") {
     const web = await extractWithWeb({ asin, domain, url: canonicalUrl }).catch(() => null);
     if (web) {
       const result: ScrapeResult = {
@@ -62,7 +78,8 @@ export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {
     }
   }
   const f = FAIL_MESSAGES[reason] ?? FAIL_MESSAGES.blocked;
-  throw new AppError(f.msg, reason, f.status);
+  const seen = summarizeAttempts(outcome.attempts);
+  throw new AppError(seen && reason !== "not_found" ? `${f.msg}（Amazon 返回：${seen}）` : f.msg, reason, f.status);
 }
 
 export async function productFromPaste(text: string, url?: string): Promise<ScrapeResult> {

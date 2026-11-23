@@ -96,6 +96,13 @@ export async function extractWithWeb(ctx: Ctx): Promise<{ product: ProductData; 
       messages.push({ role: "assistant", content: res.content });
     }
     if (!res || res.stop_reason === "refusal") return null;
+    // Only trust the answer when the server tools actually ran: a model that
+    // ignored the tools could otherwise invent "fetched" product data.
+    const usedTools = res.content.some((b) => b.type === "web_fetch_tool_result" || b.type === "web_search_tool_result");
+    if (!usedTools) {
+      console.warn("[scrape] web fallback returned no tool results; ignoring its answer");
+      return null;
+    }
     const out = res.content
       .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
       .map((b) => b.text)
