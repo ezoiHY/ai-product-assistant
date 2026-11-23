@@ -124,5 +124,6 @@ npx vercel --prod
 
 ## 注意
 
+- 如果 `vercel login` 或 `vercel deploy` 报 `connection was reset` / `fetch failed`：本机代理的规则模式可能把 Vercel 的流量设成了直连，而直连会被干扰。把代理临时切到**全局模式**再试，部署完再切回去。
 - `*.vercel.app` 在中国大陆不翻墙打不开。如果面试官在国内，可以在 Vercel 绑定一个自己的域名，或者提交时说明需要科学上网访问。
 - Vercel 免费版的函数最长可以运行 300 秒，本项目每一步都远低于这个时长。

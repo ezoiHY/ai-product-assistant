@@ -2,7 +2,7 @@
 
 > 粘贴一个 Amazon 商品链接 → **产品信息整理 · 深度产品分析 · 短视频口播文案 · 事实与合规质检**
 
-- 在线体验：`<部署后填写 Vercel 地址>`
+- 在线体验：**https://ai-product-assistant-three.vercel.app**（`*.vercel.app` 在中国大陆需要科学上网才能打开）
 - 技术栈：Next.js 16（App Router）+ TypeScript + Tailwind CSS 4 · Claude（官方 `@anthropic-ai/sdk`：结构化输出、图片理解、联网工具）· Vercel
 
 ## 功能
@@ -128,6 +128,7 @@ npx tsx --env-file=.env.local scripts/run-pipeline.ts https://www.amazon.com/dp/
 
 ## 已知限制
 
+- 题目里的第一个示例链接 `B0F6YQ96L5` 目前已从 Amazon 美国站下架：从 Vercel 美国服务器和本机请求都返回 404。工具会明确提示「找不到这个商品页面」；第二个示例链接可以正常分析。
 - Amazon 的反爬对云服务器 IP 更严格。直连失败时会自动走 Claude 联网兜底，再不行可以手动粘贴，但这两种方式拿到的字段可能比直连少。
 - 价格、库存跟配送地区有关。服务器部署在美国区时价格最完整。
 - 深度分析用 Opus 级模型大约需要 30-60 秒。设置 `ANTHROPIC_MODEL=claude-sonnet-5-5` 会更快、更便宜。
