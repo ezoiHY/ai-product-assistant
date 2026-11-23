@@ -115,6 +115,43 @@ export async function structuredCall<S extends z.ZodType>(opts: {
   }
 }
 
+export interface AvailableModel {
+  id: string;
+  name: string;
+  createdAt?: string;
+  contextWindow?: number;
+  maxOutput?: number;
+  deprecated?: boolean;
+}
+
+/** Models the current key can use (Models API, auto-paginated). Also accepts the
+ *  slightly different list format some Anthropic-compatible gateways return. */
+export async function listModels(limit = 200): Promise<AvailableModel[]> {
+  const out: AvailableModel[] = [];
+  try {
+    for await (const m of getClient().models.list({ limit: 100 })) {
+      const x = m as unknown as Record<string, unknown>;
+      if (typeof x.id !== "string" || !x.id) continue;
+      if (x.lifecycle === "retired") continue;
+      out.push({
+        id: x.id,
+        name: typeof x.display_name === "string" && x.display_name ? x.display_name : x.id,
+        createdAt: typeof x.created_at === "string" ? x.created_at : undefined,
+        contextWindow: typeof x.max_input_tokens === "number" ? x.max_input_tokens : undefined,
+        maxOutput: typeof x.max_tokens === "number" ? x.max_tokens : undefined,
+        deprecated: x.lifecycle === "deprecated" || undefined,
+      });
+      if (out.length >= limit) break; // guard against gateways that never stop paginating
+    }
+    return out;
+  } catch (e) {
+    if (e instanceof Anthropic.NotFoundError) {
+      throw new AIError("这个接口地址不支持获取模型列表（/v1/models），可以直接填写模型名", "models_unsupported", 404);
+    }
+    throw toAIError(e);
+  }
+}
+
 /** Smallest possible request, used by the "测试连接" button. */
 export async function pingModel(): Promise<{ model: string; ms: number }> {
   const t0 = Date.now();

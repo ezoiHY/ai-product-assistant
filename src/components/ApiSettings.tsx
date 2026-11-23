@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowUpRight, Check, CircleCheck, CircleX, Eye, EyeOff, KeyRound, Loader2, Trash2 } from "lucide-react";
+import { ArrowUpRight, Check, CircleCheck, CircleX, Eye, EyeOff, KeyRound, Loader2, RefreshCw, Search, Trash2, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { postJSON } from "@/lib/api-types";
 import { clearLLMConfig, llmHeaders, loadLLMConfig, maskKey, saveLLMConfig, useLLMConfig } from "@/lib/llm-config";
 import { DEFAULT_MODEL, KNOWN_MODELS, validateApiKey, validateBaseURL, validateModel, type ClientLLMConfig } from "@/lib/llm-shared";
+import type { AvailableModel } from "@/lib/ai/client";
 import { ICON_STROKE, IconTile, cx } from "./ui";
 
 export interface ServerStatus {
@@ -106,8 +107,33 @@ function validate(f: FormState): { apiKey?: string; baseURL?: string; model?: st
     if (!m) errs.model = "请输入模型名称";
     else if (validateModel(m)) errs.model = validateModel(m)!;
     else if (!key) errs.model = "自定义模型需要使用你自己的 API Key";
+  } else if (!KNOWN_MODELS.some((m) => m.id === f.modelChoice)) {
+    // picked from the fetched list
+    if (validateModel(f.modelChoice)) errs.model = validateModel(f.modelChoice)!;
+    else if (!key) errs.model = "这个模型需要使用你自己的 API Key";
   }
   return errs;
+}
+
+type ModelsState = { status: "idle" } | { status: "loading" } | { status: "error"; text: string } | { status: "done"; models: AvailableModel[] };
+
+/** Claude models first, active before deprecated, newest first. */
+function sortModels(list: AvailableModel[]): AvailableModel[] {
+  const t = (m: AvailableModel) => (m.createdAt ? Date.parse(m.createdAt) || 0 : 0);
+  return [...list].sort((a, b) => {
+    const ca = a.id.startsWith("claude-") ? 0 : 1;
+    const cb = b.id.startsWith("claude-") ? 0 : 1;
+    if (ca !== cb) return ca - cb;
+    if (Boolean(a.deprecated) !== Boolean(b.deprecated)) return a.deprecated ? 1 : -1;
+    if (t(a) !== t(b)) return t(b) - t(a);
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1000) return `${Math.round(n / 1000)}K`;
+  return String(n);
 }
 
 type TestState = { status: "idle" } | { status: "running" } | { status: "ok"; text: string } | { status: "error"; text: string };
@@ -119,11 +145,34 @@ function SettingsForm({ server, onDone }: { server: ServerStatus | null; onDone:
   const [errors, setErrors] = useState<ReturnType<typeof validate>>({});
   const [test, setTest] = useState<TestState>({ status: "idle" });
   const [notice, setNotice] = useState("");
-  const ids = { key: useId(), base: useId(), model: useId(), keyErr: useId(), baseErr: useId(), modelErr: useId() };
+  const [models, setModels] = useState<ModelsState>({ status: "idle" });
+  const [modelFilter, setModelFilter] = useState("");
+  const ids = { key: useId(), base: useId(), model: useId(), keyErr: useId(), baseErr: useId(), modelErr: useId(), filter: useId() };
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
     setTest({ status: "idle" });
     setNotice("");
+    // a different key / endpoint has a different model list
+    if (k === "apiKey" || k === "baseURL") setModels({ status: "idle" });
+  };
+
+  const fetchModels = async () => {
+    const errs = validate({ ...form, modelChoice: DEFAULT_MODEL }); // only key + endpoint matter here
+    setErrors(errs);
+    if (errs.apiKey || errs.baseURL) return;
+    if (!form.apiKey.trim()) {
+      setModels({ status: "error", text: "请先填写你的 API Key，再获取这个 Key 可用的模型" });
+      return;
+    }
+    setModels({ status: "loading" });
+    try {
+      const r = await postJSON<{ models: AvailableModel[] }>("/api/config/models", {}, undefined, llmHeaders({ ...toConfig(form), model: "" }));
+      const list = sortModels(r.models);
+      setModelFilter("");
+      setModels(list.length ? { status: "done", models: list } : { status: "error", text: "这个 Key 没有返回任何可用模型" });
+    } catch (e) {
+      setModels({ status: "error", text: e instanceof Error ? e.message : String(e) });
+    }
   };
 
   const usingOwnKey = Boolean(form.apiKey.trim());
@@ -312,7 +361,103 @@ function SettingsForm({ server, onDone }: { server: ServerStatus | null; onDone:
               <FieldError id={ids.modelErr} msg={errors.model} />
             </div>
           </div>
+          <button
+            type="button"
+            onClick={fetchModels}
+            disabled={models.status === "loading"}
+            aria-busy={models.status === "loading"}
+            className={cx(ROW, "flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left text-[15px] text-link transition-colors hover:bg-fill/60 disabled:cursor-wait")}
+          >
+            {models.status === "loading" ? (
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" />
+            ) : (
+              <RefreshCw className="h-4 w-4" strokeWidth={ICON_STROKE} aria-hidden="true" />
+            )}
+            <span className="flex-1">{models.status === "loading" ? "正在获取模型…" : models.status === "done" ? "重新获取模型" : "获取可用模型"}</span>
+            {models.status === "done" && <span className="num text-[13px] text-label-2">{models.models.length} 个</span>}
+          </button>
         </Group>
+
+        <div aria-live="polite">
+          {models.status === "error" && (
+            <p className="-mt-5 mb-7 flex items-start gap-1.5 px-4 text-[13px] leading-5 text-danger">
+              <CircleX className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+              {models.text}
+            </p>
+          )}
+        </div>
+
+        {models.status === "done" && (() => {
+          const q = modelFilter.trim().toLowerCase();
+          const shown = q ? models.models.filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)) : models.models;
+          const selected = form.modelChoice === CUSTOM ? form.customModel.trim() : form.modelChoice;
+          const missing = selected && !models.models.some((m) => m.id === selected);
+          return (
+            <Group
+              title="这个 Key 可用的模型"
+              footer={
+                missing ? (
+                  <span className="flex items-start gap-1.5 text-warning">
+                    <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={ICON_STROKE} aria-hidden="true" />
+                    当前选择的 {selected} 不在列表里，可能无法调用，建议从列表中选择。
+                  </span>
+                ) : (
+                  "Claude 模型排在前面，同类按发布时间从新到旧。选中后点「保存」生效。"
+                )
+              }
+            >
+              {models.models.length > 8 && (
+                <div className={cx(ROW, "flex items-center gap-2 px-4 py-2.5")}>
+                  <Search className="h-4 w-4 shrink-0 text-label-3" strokeWidth={ICON_STROKE} aria-hidden="true" />
+                  <label htmlFor={ids.filter} className="sr-only">
+                    筛选模型
+                  </label>
+                  <input
+                    id={ids.filter}
+                    value={modelFilter}
+                    onChange={(e) => setModelFilter(e.target.value)}
+                    placeholder="筛选模型，例如 sonnet"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 bg-transparent text-[15px] text-label outline-none placeholder:text-label-3"
+                  />
+                </div>
+              )}
+              <div role="radiogroup" aria-label="这个 Key 可用的模型" className="max-h-[320px] overflow-y-auto [scrollbar-width:thin]">
+                {shown.map((m) => {
+                  const on = selected === m.id;
+                  const preset = KNOWN_MODELS.some((k) => k.id === m.id);
+                  const meta = [m.contextWindow ? `${fmtTokens(m.contextWindow)} 上下文` : "", m.maxOutput ? `输出上限 ${fmtTokens(m.maxOutput)}` : ""].filter(Boolean);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      aria-label={`${m.name}（${m.id}）`}
+                      onClick={() => set("modelChoice", m.id)}
+                      className={cx(ROW, "flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-fill/60")}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[15px] text-label">{m.name}</span>
+                          {preset && <span className="chip bg-info-tint py-0 text-[11px] text-info">预设</span>}
+                          {m.deprecated && <span className="chip bg-warning-tint py-0 text-[11px] text-warning">即将下线</span>}
+                        </span>
+                        <span className="num block truncate font-mono text-[12px] text-label-2">
+                          {m.id}
+                          {meta.length > 0 && <span className="font-sans"> · {meta.join(" · ")}</span>}
+                        </span>
+                      </span>
+                      {on && <Check className="h-[18px] w-[18px] shrink-0 text-link" strokeWidth={2.5} aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+                {shown.length === 0 && <p className="px-4 py-3 text-[13px] text-label-2">没有匹配“{modelFilter}”的模型</p>}
+              </div>
+            </Group>
+          );
+        })()}
 
         <Group title="高级" footer="使用第三方中转时如果报错，可以关闭「拒答回退」再试。关闭「记住」后，Key 只在当前标签页有效。">
           <div className={cx(ROW, "flex items-center justify-between gap-4 px-4 py-2.5")}>
