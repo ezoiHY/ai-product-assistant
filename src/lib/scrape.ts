@@ -2,34 +2,57 @@
 import { aiConfigured } from "./ai/client";
 import { llmConfig } from "./ai/config";
 import { extractFromText, extractWithWeb } from "./ai/extract";
-import { classifyPage, fetchProductPage, type AttemptLog } from "./amazon/fetch";
+import { classifyPage, fetchProductPage, type AttemptLog, type FailReason } from "./amazon/fetch";
 import { buildPageDigest, completenessOf, parseProductHtml } from "./amazon/parse";
 import { extractAsinFromPath, parseAmazonInput } from "./amazon/url";
 import { AppError, TTLCache } from "./server-utils";
 import type { ProductData, ScrapeResult } from "./types";
 
-const cache = new TTLCache<ScrapeResult>(30 * 60_000);
+// A product page fetched once serves repeat analyses for 6 hours, so Amazon
+// isn't asked for the same page again.
+const cache = new TTLCache<ScrapeResult>(6 * 60 * 60_000);
+// Lookups for a product that arrive while one is already running share it.
+const inflight = new Map<string, Promise<ScrapeResult>>();
 
-// What went wrong, then what to do. The fix for a block is 浏览器带回: Amazon
-// limits cloud-server IPs, not the visitor's own browser.
-const FAIL_MESSAGES: Record<string, { msg: string; status: number }> = {
-  not_found: { msg: "Amazon 上找不到这个商品页面：可能已下架、链接有误，或该站点不售卖此商品。", status: 404 },
-  captcha: { msg: "Amazon 用验证码拦住了服务器", status: 502 },
-  blocked: { msg: "Amazon 拒绝了服务器访问", status: 502 },
-  network: { msg: "连接 Amazon 超时", status: 504 },
-};
-const BLOCKED_HINT = "这是 Amazon 对云服务器 IP 的限制，不是链接的问题。点下方「浏览器带回」，在你自己的浏览器里打开这个商品页就能继续分析；也可以稍后重试。";
+const BLOCKED_HINT = "这是 Amazon 对云服务器 IP 的限制，不是链接的问题。点下方「浏览器带回」，在你自己的浏览器里打开这个商品页就能继续分析。";
 
 const VERDICT_ZH: Record<string, string> = { captcha: "验证码页", blocked: "拒绝访问", not_found: "页面不存在", network_error: "连接失败", ok: "正常" };
 
-/** e.g. "验证码页 ×2、HTTP 503 ×1" — what Amazon answered on each attempt. */
+/** e.g. "验证码页" or "页面不存在 ×2" — what Amazon answered on each attempt. */
 function summarizeAttempts(attempts: AttemptLog[]): string {
   const counts = new Map<string, number>();
   for (const a of attempts) {
     const k = a.verdict === "blocked" && a.status ? `HTTP ${a.status}` : (VERDICT_ZH[a.verdict] ?? a.verdict);
     counts.set(k, (counts.get(k) ?? 0) + 1);
   }
-  return [...counts].map(([k, n]) => `${k} ×${n}`).join("、");
+  return [...counts].map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join("、");
+}
+
+const minutes = (ms: number) => Math.max(1, Math.ceil(ms / 60_000));
+
+// What went wrong, then what to do. The fix for a block is 浏览器带回: Amazon
+// limits cloud-server IPs, not the visitor's own browser.
+function failure(reason: FailReason, attempts: AttemptLog[], pausedMs = 0): AppError {
+  switch (reason) {
+    case "not_found":
+      return new AppError("Amazon 上找不到这个商品页面：可能已下架、链接有误，或该站点不售卖此商品。", reason, 404);
+    case "network":
+      return new AppError("连接 Amazon 超时，请稍后重试，或用下方「浏览器带回」继续分析。", reason, 504);
+    case "busy":
+      return new AppError("服务器正在排队访问 Amazon，请几秒后重试，或用下方「浏览器带回」继续分析。", reason, 503);
+    case "cooldown":
+      return new AppError(
+        `Amazon 刚刚拦过服务器，为避免加重限制，直连已暂停，约 ${minutes(pausedMs)} 分钟后恢复。点下方「浏览器带回」，在你自己的浏览器里打开这个商品页就能继续分析。`,
+        reason,
+        503,
+      );
+    default: {
+      const seen = summarizeAttempts(attempts);
+      const what = reason === "captcha" ? "Amazon 用验证码拦住了服务器" : "Amazon 拒绝了服务器访问";
+      const then = pausedMs > 0 ? `为避免加重限制，直连暂停 ${minutes(pausedMs)} 分钟。` : "也可以稍后重试。";
+      return new AppError(`${what}${seen ? `（Amazon 返回：${seen}）` : ""}。${BLOCKED_HINT}${then}`, reason, 502);
+    }
+  }
 }
 
 export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {}): Promise<ScrapeResult & { cached?: boolean }> {
@@ -40,9 +63,19 @@ export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {
     const hit = cache.get(key);
     if (hit) return { ...hit, cached: true };
   }
+  let pending = inflight.get(key);
+  if (!pending) {
+    pending = lookup(asin, domain, canonicalUrl, t0).finally(() => inflight.delete(key));
+    inflight.set(key, pending);
+  }
+  return pending;
+}
 
+async function lookup(asin: string, domain: string, canonicalUrl: string, t0: number): Promise<ScrapeResult> {
+  const key = `${domain}:${asin}`;
   const outcome = await fetchProductPage(asin, domain);
-  console.info(`[scrape] ${domain}/${asin} ${outcome.ok ? "ok" : outcome.reason} attempts=${outcome.attempts.map((a) => `${a.verdict}:${a.status ?? "-"}:${a.ms}ms`).join(",")}`);
+  const paused = !outcome.ok && outcome.pausedMs ? ` paused=${Math.round(outcome.pausedMs / 1000)}s` : "";
+  console.info(`[scrape] ${domain}/${asin} ${outcome.ok ? "ok" : outcome.reason} attempts=${outcome.attempts.map((a) => `${a.verdict}:${a.status ?? "-"}:${a.ms}ms`).join(",")}${paused}`);
   if (outcome.ok) {
     const { product, warnings } = parseProductHtml(outcome.html, { asin, domain, url: canonicalUrl });
     if (product.title) {
@@ -60,7 +93,7 @@ export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {
     }
   }
 
-  const reason = outcome.ok ? "blocked" : outcome.reason;
+  const reason: FailReason = outcome.ok ? "blocked" : outcome.reason;
   // Fallback: Claude's own web tools (Anthropic fetches the page / searches the web).
   // Skipped through custom gateways: they usually don't run Anthropic's server
   // tools, and a model without them could answer from memory instead.
@@ -80,15 +113,7 @@ export async function scrapeProduct(input: string, opts: { fresh?: boolean } = {
       return result;
     }
   }
-  const f = FAIL_MESSAGES[reason] ?? FAIL_MESSAGES.blocked;
-  const seen = summarizeAttempts(outcome.attempts);
-  const message =
-    reason === "not_found"
-      ? f.msg
-      : reason === "network"
-        ? `${f.msg}，请稍后重试，或用下方「浏览器带回」继续分析。`
-        : `${f.msg}${seen ? `（Amazon 返回：${seen}）` : ""}。${BLOCKED_HINT}`;
-  throw new AppError(message, reason, f.status);
+  throw failure(reason, outcome.attempts, outcome.ok ? 0 : outcome.pausedMs);
 }
 
 /** "浏览器带回": the visitor's own browser sent the product page it is showing.

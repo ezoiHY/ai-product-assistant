@@ -1,8 +1,18 @@
-// Fetch an Amazon product page the way a normal browser would, detect the
-// common failure pages (CAPTCHA / robot check / 404 dog page) and retry a couple
-// of times like a returning visitor (same browser, keeping session cookies).
-// Deliberately no CAPTCHA solving, no proxy rotation: when Amazon blocks us we
-// fall back to Claude's web tools or the user's pasted page text instead.
+// Fetch an Amazon product page the way a normal browser would, and detect the
+// common failure pages (CAPTCHA / robot check / 404 dog page).
+//
+// Amazon decides mostly by IP, and a cloud server's IP is shared with many other
+// programs, so a block can't be undone from here. What we can do is not make it
+// worse, so requests stay sparse:
+//  - One request per lookup. A CAPTCHA or robot page ends it: asking again from
+//    the same IP seconds later only deepens the flag (a retry once turned a 503
+//    into two CAPTCHAs). Only a timeout, or a 404 that a second URL form should
+//    confirm, gets one more try.
+//  - After a block, no direct requests to that marketplace for 2 minutes,
+//    doubling on repeated blocks up to 15; the visitor is pointed to 浏览器带回.
+//  - Requests to one marketplace start at least 3 seconds apart.
+// This state lives in memory, so it holds per server instance.
+// Deliberately no CAPTCHA solving and no proxy rotation.
 
 import { MARKETPLACES } from "./url";
 
@@ -15,9 +25,18 @@ export interface AttemptLog {
   ms: number;
 }
 
+/** "cooldown" (paused after a recent block) and "busy" (too many lookups queued) never contacted Amazon. */
+export type FailReason = "captcha" | "blocked" | "not_found" | "network" | "cooldown" | "busy";
+
 export type FetchOutcome =
   | { ok: true; html: string; attempts: AttemptLog[] }
-  | { ok: false; reason: "captcha" | "blocked" | "not_found" | "network"; attempts: AttemptLog[] };
+  | {
+      ok: false;
+      reason: FailReason;
+      attempts: AttemptLog[];
+      /** how much longer direct requests to this marketplace stay paused */
+      pausedMs?: number;
+    };
 
 interface BrowserProfile {
   ua: string;
@@ -85,8 +104,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Session cookies from pages Amazon served normally, kept per marketplace for the
 // life of this server instance, so consecutive requests look like one returning
-// browser rather than a stream of brand-new visitors. Cookies handed out with a
-// CAPTCHA page are only used within that request, so a flagged session can't stick.
+// browser rather than a stream of brand-new visitors. A block drops them, so a
+// flagged session isn't carried past the pause.
 const SESSION_TTL_MS = 30 * 60_000;
 const sessions = new Map<string, { cookie: string; exp: number }>();
 
@@ -96,25 +115,75 @@ function sessionCookie(domain: string, base: string): string {
   return mergeCookies(base, s.cookie.split("; "));
 }
 
+// ---------- pacing, per marketplace ----------
+
+const MIN_GAP_MS = 3000;
+const MAX_QUEUE_MS = 9000; // more than ~3 lookups waiting: answer "busy" instead of queueing
+const PAUSE_STEPS_MS = [2, 4, 8, 15].map((m) => m * 60_000);
+const STRIKES_FORGOTTEN_MS = 30 * 60_000; // a block this long after the last pause starts over at 2 min
+
+interface Pace {
+  nextSlot: number;
+  pausedUntil: number;
+  strikes: number;
+}
+const paces = new Map<string, Pace>();
+
+function paceFor(domain: string): Pace {
+  let p = paces.get(domain);
+  if (!p) paces.set(domain, (p = { nextSlot: 0, pausedUntil: 0, strikes: 0 }));
+  return p;
+}
+
+function noteBlocked(p: Pace, domain: string): void {
+  const now = Date.now();
+  if (now < p.pausedUntil) return; // a parallel lookup was blocked a moment ago: same strike
+  if (now - p.pausedUntil > STRIKES_FORGOTTEN_MS) p.strikes = 0;
+  p.strikes++;
+  p.pausedUntil = now + PAUSE_STEPS_MS[Math.min(p.strikes, PAUSE_STEPS_MS.length) - 1];
+  sessions.delete(domain);
+}
+
+/** Claim the next start time for a request: ms to wait, or -1 when the queue is full. */
+function claimSlot(p: Pace): number {
+  const now = Date.now();
+  const at = Math.max(now, p.nextSlot);
+  if (at - now > MAX_QUEUE_MS) return -1;
+  p.nextSlot = at + MIN_GAP_MS;
+  return at - now;
+}
+
 export async function fetchProductPage(asin: string, domain: string, budgetMs = 25_000): Promise<FetchOutcome> {
   const started = Date.now();
+  const pace = paceFor(domain);
+  const attempts: AttemptLog[] = [];
+  const paused = (): FetchOutcome | null => {
+    const ms = pace.pausedUntil - Date.now();
+    return ms > 0 ? { ok: false, reason: "cooldown", attempts, pausedMs: ms } : null;
+  };
+  const pausedAtStart = paused();
+  if (pausedAtStart) return pausedAtStart;
+
   const mk = MARKETPLACES[domain];
   // Ask for English where the marketplace supports it; otherwise Amazon may
   // auto-translate the page based on the server's IP location.
   const lang = mk?.en ?? mk?.locale ?? "en_US";
   let cookie = sessionCookie(domain, `i18n-prefs=${mk?.currency ?? "USD"}; lc-main=${lang}`);
-  const variants = [
-    `https://www.${domain}/dp/${asin}?language=${lang}`,
-    `https://www.${domain}/dp/${asin}?th=1&psc=1&language=${lang}`,
-    `https://www.${domain}/gp/product/${asin}?language=${lang}`,
-  ];
-  const attempts: AttemptLog[] = [];
-  let notFoundCount = 0;
+  // The second URL form is only for one more try after a timeout, or to confirm a 404.
+  const variants = [`https://www.${domain}/dp/${asin}?language=${lang}`, `https://www.${domain}/gp/product/${asin}?language=${lang}`];
 
-  for (let i = 0; i < variants.length; i++) {
+  for (const url of variants) {
+    if (attempts.length) await sleep(1500 + Math.random() * 1000);
+    const wait = claimSlot(pace);
+    if (wait < 0) {
+      if (attempts.length) break;
+      return { ok: false, reason: "busy", attempts };
+    }
+    if (wait > 0) await sleep(wait);
+    const blockedMeanwhile = paused(); // a parallel lookup may have been blocked while this one waited
+    if (blockedMeanwhile) return blockedMeanwhile;
     const remaining = budgetMs - (Date.now() - started);
     if (remaining < 3000) break;
-    const url = variants[i];
     const t0 = Date.now();
     try {
       const res = await fetch(url, {
@@ -126,29 +195,20 @@ export async function fetchProductPage(asin: string, domain: string, budgetMs = 
       const html = await res.text();
       const verdict = classifyPage(html, res.status);
       attempts.push({ url, status: res.status, verdict, ms: Date.now() - t0 });
+      if (verdict === "captcha" || verdict === "blocked") {
+        noteBlocked(pace, domain);
+        return { ok: false, reason: verdict, attempts, pausedMs: Math.max(0, pace.pausedUntil - Date.now()) };
+      }
       cookie = mergeCookies(cookie, res.headers.getSetCookie?.() ?? []);
       if (verdict === "ok") {
         sessions.set(domain, { cookie, exp: Date.now() + SESSION_TTL_MS });
+        pace.strikes = 0;
         return { ok: true, html, attempts };
       }
-      if (verdict === "not_found") {
-        notFoundCount++;
-        if (notFoundCount >= 2) break; // two different URL variants agree: the product page is gone
-      }
+      // not_found: take one look at the other URL form before believing it
     } catch {
       attempts.push({ url, verdict: "network_error", ms: Date.now() - t0 });
     }
-    // back off: rapid-fire retries only deepen Amazon's throttling
-    await sleep(1500 + Math.random() * 1000);
   }
-
-  const verdicts = attempts.map((a) => a.verdict);
-  const reason = verdicts.includes("not_found") && !verdicts.includes("ok") && notFoundCount >= 2
-    ? "not_found"
-    : verdicts.includes("captcha")
-      ? "captcha"
-      : verdicts.every((v) => v === "network_error")
-        ? "network"
-        : verdicts.includes("not_found") ? "not_found" : "blocked";
-  return { ok: false, reason, attempts };
+  return { ok: false, reason: attempts.some((a) => a.verdict === "not_found") ? "not_found" : "network", attempts };
 }
